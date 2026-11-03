@@ -1,5 +1,5 @@
 import { CATALOG } from './catalog.js';
-import type { GenesysClient } from './client.js';
+import { PermissionError, type GenesysClient } from './client.js';
 import type { DependencyNode, GcObjectRef, ObjectType, TargetInfo } from './types.js';
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -85,7 +85,14 @@ export class TargetComparer {
 
   /** Arricchisce ogni nodo dell'albero con lo stato sul target */
   async annotate(node: DependencyNode): Promise<void> {
-    if (node.supported) node.target = await this.compare(node);
+    if (node.supported) {
+      try {
+        node.target = await this.compare(node);
+      } catch (e) {
+        if (!(e instanceof PermissionError)) throw e;
+        node.error = node.error ? `${node.error}\n${e.message}` : e.message;
+      }
+    }
     for (const c of node.children) await this.annotate(c);
   }
 }

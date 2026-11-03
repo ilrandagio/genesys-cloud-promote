@@ -45,6 +45,8 @@ export interface DependencyNode extends GcObjectRef {
   children: DependencyNode[];
   /** true se il nodo compare già più in alto nell'albero (evita cicli) */
   repeated?: boolean;
+  /** Problema di lettura (es. permessi mancanti): il nodo è mostrato ma le sue dipendenze o lo stato sul target sono incompleti */
+  error?: string;
 }
 
 export type PortAction = 'port' | 'reuse' | 'skip';

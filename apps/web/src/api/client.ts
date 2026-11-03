@@ -39,6 +39,7 @@ export interface DependencyNode {
   rawType?: string;
   supported: boolean;
   repeated?: boolean;
+  error?: string;
   target?: { status: TargetStatus; id?: string; diff?: string[] };
   children: DependencyNode[];
 }

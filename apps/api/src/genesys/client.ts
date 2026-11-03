@@ -16,7 +16,7 @@ export class GenesysClient {
   readonly apiBase: string;
   private readonly loginBase: string;
 
-  constructor(private readonly env: Pick<Environment, 'id' | 'region' | 'clientId' | 'clientSecretEncrypted'>) {
+  constructor(private readonly env: Pick<Environment, 'id' | 'name' | 'region' | 'clientId' | 'clientSecretEncrypted'>) {
     this.apiBase = `https://api.${env.region}`;
     this.loginBase = `https://login.${env.region}`;
   }
@@ -39,7 +39,12 @@ export class GenesysClient {
       },
       body: 'grant_type=client_credentials',
     });
-    if (!res.ok) throw new Error(`Login OAuth fallito (${res.status}): ${await res.text()}`);
+    if (!res.ok) {
+      throw new Error(
+        `Ambiente "${this.env.name}": login dell'OAuth client ${this.env.clientId} fallito (${res.status}). ` +
+          `Verificare client ID, secret e regione. Dettaglio: ${await res.text()}`,
+      );
+    }
     const body = (await res.json()) as { access_token: string; expires_in: number };
     tokenCache.set(this.env.id, { value: body.access_token, expiresAt: Date.now() + body.expires_in * 1000 });
     return body.access_token;
@@ -55,7 +60,8 @@ export class GenesysClient {
       return this.get(path, attempt + 1);
     }
     if (res.status === 404) throw new NotFoundError(path);
-    if (!res.ok) throw new Error(`GET ${path} -> ${res.status}: ${await res.text()}`);
+    if (res.status === 403) throw new PermissionError(this.env, path, await res.text());
+    if (!res.ok) throw new Error(`Ambiente "${this.env.name}": GET ${path} -> ${res.status}: ${await res.text()}`);
     return res.json() as Promise<T>;
   }
 
@@ -83,5 +89,30 @@ export class GenesysClient {
 export class NotFoundError extends Error {
   constructor(path: string) {
     super(`Non trovato: ${path}`);
+  }
+}
+
+/**
+ * 403 della Platform API, con un messaggio che dice quale ambiente e quale OAuth client
+ * non hanno il permesso, e in quali divisioni.
+ */
+export class PermissionError extends Error {
+  readonly statusCode = 403;
+  constructor(env: Pick<Environment, 'name' | 'clientId'>, path: string, body: string) {
+    let detail = '';
+    try {
+      const b = JSON.parse(body) as { messageParams?: { permission?: string; divisions?: string }; message?: string };
+      const perm = b.messageParams?.permission;
+      const divs = b.messageParams?.divisions?.replace(/\([0-9a-f-]{36}\)/gi, '').replace(/^\[|\]$/g, '');
+      detail = perm
+        ? `manca il permesso '${perm}'${divs ? ` nella divisione ${divs}` : ''}`
+        : `mancano i permessi necessari (${b.message ?? body})`;
+    } catch {
+      detail = `mancano i permessi necessari (${body})`;
+    }
+    super(
+      `Ambiente "${env.name}": all'OAuth client ${env.clientId} ${detail}. ` +
+        `Aggiungere il permesso o la divisione al ruolo del client (Admin > OAuth > Roles). [GET ${path}]`,
+    );
   }
 }

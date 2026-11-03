@@ -1,5 +1,5 @@
 import { CATALOG, flowDependencyType, fromDependencyType } from './catalog.js';
-import { GenesysClient, NotFoundError } from './client.js';
+import { GenesysClient, NotFoundError, PermissionError } from './client.js';
 import type { DependencyNode, GcObjectRef, ObjectType } from './types.js';
 
 interface RawDep {
@@ -99,7 +99,8 @@ export async function buildDependencyTree(
     try {
       deps = await directDependencies(client, obj);
     } catch (e) {
-      if (!(e instanceof NotFoundError)) throw e;
+      if (e instanceof PermissionError) node.error = e.message;
+      else if (!(e instanceof NotFoundError)) throw e;
     }
 
     // Per i flow serve il sottotipo per il match sul target

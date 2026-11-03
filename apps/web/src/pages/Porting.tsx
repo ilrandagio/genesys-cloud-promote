@@ -1,4 +1,4 @@
-import { ArrowRightOutlined, BranchesOutlined, PlayCircleOutlined, ExperimentOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, BranchesOutlined, ExclamationCircleFilled, ExperimentOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -14,6 +14,7 @@ import {
   Steps,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import { useMemo, useState } from 'react';
@@ -153,6 +154,17 @@ export default function PortingPage() {
     const out = new Set<string>();
     const walk = (n: DependencyNode) => {
       if (!n.supported) out.add(`${n.rawType} "${n.name}"`);
+      n.children.forEach(walk);
+    };
+    trees?.forEach(walk);
+    return [...out];
+  }, [trees]);
+
+  /** Problemi di lettura (permessi) emersi durante l'analisi, senza duplicati */
+  const readErrors = useMemo(() => {
+    const out = new Set<string>();
+    const walk = (n: DependencyNode) => {
+      n.error?.split('\n').forEach((e) => out.add(e));
       n.children.forEach(walk);
     };
     trees?.forEach(walk);
@@ -375,6 +387,20 @@ export default function PortingPage() {
                 message={`${counts.missingSkipped} dipendenze mancanti sul target sono impostate su "Salta": gli oggetti che le usano potrebbero fallire.`}
               />
             )}
+            {readErrors.length > 0 && (
+              <Alert
+                type="error"
+                showIcon
+                message="Alcuni oggetti non sono leggibili: l'analisi è incompleta"
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {readErrors.map((e) => (
+                      <li key={e}>{e}</li>
+                    ))}
+                  </ul>
+                }
+              />
+            )}
             {unsupported.length > 0 && (
               <Alert
                 type="info"
@@ -399,6 +425,11 @@ export default function PortingPage() {
                         {name}
                       </Typography.Text>
                       {n.repeated && <Tag>già elencato sopra</Tag>}
+                      {n.error && (
+                        <Tooltip title={n.error}>
+                          <ExclamationCircleFilled style={{ color: '#ff4d4f' }} />
+                        </Tooltip>
+                      )}
                     </Space>
                   ),
                 },
@@ -409,14 +440,23 @@ export default function PortingPage() {
                 },
                 {
                   title: 'Sul target',
-                  render: (_, n) => (n.supported ? <TargetStatusTag status={n.target?.status} diff={n.target?.diff} /> : <Tag>non gestito</Tag>),
+                  render: (_, n) =>
+                    !n.supported ? (
+                      <Tag>non gestito</Tag>
+                    ) : n.target ? (
+                      <TargetStatusTag status={n.target.status} diff={n.target.diff} />
+                    ) : (
+                      <Tooltip title={n.error}>
+                        <Tag color="red">non accessibile</Tag>
+                      </Tooltip>
+                    ),
                   width: 170,
                 },
                 {
                   title: 'Azione',
                   width: 260,
                   render: (_, n) => {
-                    if (!n.supported || n.repeated) return null;
+                    if (!n.supported || n.repeated || !n.target) return null;
                     const exists = n.target?.status !== 'missing';
                     return (
                       <Select<PortAction>

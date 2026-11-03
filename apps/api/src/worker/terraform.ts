@@ -16,7 +16,7 @@ export function terraform(
 ): Promise<{ code: number; output: string }> {
   return new Promise((resolve, reject) => {
     // Ambiente del processo (serve su Windows: SystemRoot, APPDATA, TEMP, proxy...) senza i segreti dell'app
-    const { JWT_SECRET, ENCRYPTION_KEY, APP_USERS, DATABASE_URL, REDIS_URL, ...baseEnv } = process.env;
+    const { JWT_SECRET, ENCRYPTION_KEY, GENESYS_LOGIN_CLIENT_SECRET, DATABASE_URL, REDIS_URL, ...baseEnv } = process.env;
     const child = spawn(config.TERRAFORM_BIN, [...args], {
       cwd,
       env: {

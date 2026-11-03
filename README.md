@@ -5,7 +5,8 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 
 ## Funzioni
 
-1. **Login** all'applicazione.
+1. **Login con Genesys Cloud**: ogni utente entra con il proprio account dell'org di login
+   (OAuth Authorization Code + PKCE), con accesso eventualmente limitato a un ruolo Genesys o a un elenco di email.
 2. **Ambienti**: ogni org Genesys Cloud è registrata con la propria regione e il proprio OAuth client
    (Client Credentials). Il secret è salvato cifrato (AES-256-GCM) e non viene mai restituito dalle API.
    Un ambiente può essere marcato "solo sorgente" (es. produzione in sola lettura).
@@ -45,7 +46,25 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
      per le dipendenze tra flow).
   La cartella di lavoro (che può contenere secret) viene cancellata a fine job.
 
-## Permessi degli OAuth client
+## Login con Genesys Cloud
+
+L'accesso all'app avviene con un account Genesys Cloud di un'org scelta come "org di login"
+(di solito quella del team, oppure l'org di sviluppo del cliente). Nell'org di login creare un OAuth client:
+
+- *Admin → Integrations → OAuth → Add Client*;
+- **Grant Type: Code Authorization**;
+- **Authorized redirect URI**: `APP_URL/api/auth/callback`
+  (in locale `http://localhost:5173/api/auth/callback`, con Docker `http://localhost:8080/api/auth/callback`);
+- nessun ruolo da assegnare: il client agisce con i permessi dell'utente e legge solo il suo profilo.
+
+Nel `.env`: `GENESYS_LOGIN_REGION`, `GENESYS_LOGIN_CLIENT_ID`, `GENESYS_LOGIN_CLIENT_SECRET`.
+Per limitare l'accesso (consigliato): `GENESYS_LOGIN_REQUIRED_ROLE` (nome di un ruolo Genesys, es. creare il ruolo
+"Promote Users" e assegnarlo alle persone abilitate) e/o `APP_ALLOWED_EMAILS`.
+
+Il login Genesys identifica chi usa l'app; le operazioni sugli ambienti usano invece gli OAuth client
+Client Credentials configurati nella pagina Ambienti (sezione successiva). Lo storico dei job registra l'email dell'utente.
+
+## Permessi degli OAuth client degli ambienti
 
 Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
 
@@ -65,11 +84,11 @@ Servono solo:
 git clone https://github.com/ilrandagio/genesys-cloud-promote.git
 cd genesys-cloud-promote
 npm install
-npm run setup -- admin "LaTuaPassword"   # crea .env con segreti generati e l'utente
+npm run setup -- --region mypurecloud.de --client-id <id> --client-secret <secret>   # crea .env
 npm run dev                              # avvia API e interfaccia insieme
 ```
 
-Aprire http://localhost:5173.
+Aprire http://localhost:5173 e premere **Accedi con Genesys Cloud**. Prima serve il client OAuth di login (vedi sopra).
 
 In questa modalità (nessun `DATABASE_URL` / `REDIS_URL` nel `.env`):
 - il database è PostgreSQL integrato (PGlite), salvato nella cartella `data/`;
@@ -81,7 +100,7 @@ Per cancellare tutti i dati locali basta eliminare la cartella `data/`.
 ## Avvio con Docker
 
 ```bash
-cp .env.example .env      # compilare JWT_SECRET, ENCRYPTION_KEY, APP_USERS
+cp .env.example .env      # compilare JWT_SECRET, ENCRYPTION_KEY e GENESYS_LOGIN_*, APP_URL=http://localhost:8080
 docker compose up --build
 ```
 
@@ -96,8 +115,8 @@ Le migrazioni del DB partono da sole all'avvio dell'API.
 
 ## Limiti noti e prossimi passi
 
-- **Login**: oggi utenti locali (`APP_USERS`). Per la produzione sostituire con OIDC (Entra ID / Okta / login Genesys)
-  in `apps/api/src/routes/auth.ts`, mantenendo lo stesso cookie JWT.
+- **Login**: una sola org di login per istanza. Le operazioni sugli ambienti usano i client Client Credentials,
+  non i permessi dell'utente loggato.
 - **Tipi di oggetto**: per aggiungerne uno basta una voce in `genesys/catalog.ts` (endpoint e tipo Terraform)
   e, se ha dipendenze, un caso in `genesys/dependencies.ts`.
 - **Dipendenze non gestite** (utenti, gruppi, divisioni, data table, bot…) sono mostrate in analisi ma non portate:

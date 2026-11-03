@@ -26,8 +26,20 @@ const schema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET deve avere almeno 32 caratteri (npm run setup lo genera)'),
   /// Chiave a 32 byte in base64 per cifrare i client secret degli ambienti
   ENCRYPTION_KEY: z.string(),
-  /// Utenti locali: "utente:bcryptHash,utente2:bcryptHash". Da sostituire con OIDC in produzione.
-  APP_USERS: z.string().default(''),
+  /// URL pubblico dell'interfaccia: base del redirect URI OAuth (APP_URL/api/auth/callback)
+  APP_URL: z.string().default('http://localhost:5173'),
+
+  // ---- Login con Genesys Cloud (OAuth Authorization Code + PKCE) ----
+  /// Dominio dell'org usata per il login, es. mypurecloud.de
+  GENESYS_LOGIN_REGION: z.string().min(1, 'GENESYS_LOGIN_REGION obbligatorio (org Genesys usata per il login)'),
+  /// OAuth client di tipo "Code Authorization" nell'org di login
+  GENESYS_LOGIN_CLIENT_ID: z.string().min(1, 'GENESYS_LOGIN_CLIENT_ID obbligatorio'),
+  GENESYS_LOGIN_CLIENT_SECRET: z.string().min(1, 'GENESYS_LOGIN_CLIENT_SECRET obbligatorio'),
+  /// Facoltativo: solo gli utenti con questo ruolo Genesys possono entrare
+  GENESYS_LOGIN_REQUIRED_ROLE: z.preprocess(empty, z.string().optional()),
+  /// Facoltativo: elenco di email ammesse, separate da virgola
+  APP_ALLOWED_EMAILS: z.preprocess(empty, z.string().optional()),
+
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   /// Cartella di lavoro per gli export Terraform
   WORK_DIR: z.string().default(path.join(tmpdir(), 'gc-promote')),

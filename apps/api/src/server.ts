@@ -25,7 +25,8 @@ if (inProcessWorker) {
 const app = Fastify({ logger: true });
 
 await app.register(cors, { origin: config.CORS_ORIGIN, credentials: true });
-await app.register(cookie);
+// Il secret firma il cookie temporaneo con state e verifier PKCE del login
+await app.register(cookie, { secret: config.JWT_SECRET });
 await app.register(jwt, { secret: config.JWT_SECRET, cookie: { cookieName: COOKIE, signed: false } });
 
 app.setErrorHandler((err, _req, reply) => {

@@ -13,15 +13,18 @@ export default function App() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<{ username: string }>('/api/auth/me') });
+  const me = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ username: string; name: string; org: string }>('/api/auth/me'),
+  });
 
   if (me.isLoading) return <Spin fullscreen />;
-  if (me.isError) return <LoginPage onLogin={() => qc.invalidateQueries({ queryKey: ['me'] })} />;
+  if (me.isError) return <LoginPage />;
 
   const logout = async () => {
     await api('/api/auth/logout', { method: 'POST' });
     qc.clear();
-    navigate('/');
+    window.location.href = '/';
   };
 
   const selected = '/' + (location.pathname.split('/')[1] || 'porting');
@@ -45,7 +48,9 @@ export default function App() {
           ]}
         />
         <Space>
-          <Typography.Text style={{ color: '#ccc' }}>{me.data?.username}</Typography.Text>
+          <Typography.Text style={{ color: '#ccc' }} title={me.data?.username}>
+            {me.data?.name}
+          </Typography.Text>
           <Button icon={<LogoutOutlined />} onClick={logout}>
             Esci
           </Button>

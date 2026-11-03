@@ -1,39 +1,32 @@
-import { Alert, Button, Card, Form, Input } from 'antd';
-import { useState } from 'react';
-import { api } from '../api/client';
+import { LoginOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Space, Typography } from 'antd';
 
-export default function LoginPage({ onLogin }: { onLogin: () => void }) {
-  const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(false);
-
-  const submit = async (values: { username: string; password: string }) => {
-    setLoading(true);
-    setError(undefined);
-    try {
-      await api('/api/auth/login', { method: 'POST', body: values });
-      onLogin();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
+export default function LoginPage() {
+  const error = new URLSearchParams(window.location.search).get('loginError');
 
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#f0f2f5' }}>
-      <Card title="Genesys Cloud Promote" style={{ width: 380 }}>
-        <Form layout="vertical" onFinish={submit}>
-          <Form.Item name="username" label="Utente" rules={[{ required: true }]}>
-            <Input autoFocus />
-          </Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true }]}>
-            <Input.Password />
-          </Form.Item>
-          {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} />}
-          <Button type="primary" htmlType="submit" block loading={loading}>
-            Accedi
+      <Card style={{ width: 400 }}>
+        <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          <div>
+            <Typography.Title level={3} style={{ marginBottom: 4 }}>
+              Genesys Cloud Promote
+            </Typography.Title>
+            <Typography.Text type="secondary">Promozione di oggetti tra ambienti Genesys Cloud</Typography.Text>
+          </div>
+          {error && <Alert type="error" showIcon message={error} />}
+          <Button
+            type="primary"
+            size="large"
+            icon={<LoginOutlined />}
+            block
+            onClick={() => {
+              window.location.href = '/api/auth/login';
+            }}
+          >
+            Accedi con Genesys Cloud
           </Button>
-        </Form>
+        </Space>
       </Card>
     </div>
   );

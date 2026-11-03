@@ -55,6 +55,29 @@ Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
 
 Il pulsante *Prova connessione* nella pagina Ambienti verifica le credenziali.
 
+## Avvio in locale senza Docker (Windows, macOS, Linux)
+
+Servono solo:
+- **Node.js 22** (LTS);
+- **Terraform** (un unico eseguibile da mettere nel PATH; serve solo per *Simula* ed *Esegui porting*).
+
+```bash
+git clone https://github.com/ilrandagio/genesys-cloud-promote.git
+cd genesys-cloud-promote
+npm install
+npm run setup -- admin "LaTuaPassword"   # crea .env con segreti generati e l'utente
+npm run dev                              # avvia API e interfaccia insieme
+```
+
+Aprire http://localhost:5173.
+
+In questa modalità (nessun `DATABASE_URL` / `REDIS_URL` nel `.env`):
+- il database è PostgreSQL integrato (PGlite), salvato nella cartella `data/`;
+- i job di porting girano nello stesso processo dell'API, uno alla volta; un job in corso viene
+  segnato come fallito se l'app viene riavviata.
+
+Per cancellare tutti i dati locali basta eliminare la cartella `data/`.
+
 ## Avvio con Docker
 
 ```bash
@@ -62,21 +85,14 @@ cp .env.example .env      # compilare JWT_SECRET, ENCRYPTION_KEY, APP_USERS
 docker compose up --build
 ```
 
-UI su http://localhost:8080. Le migrazioni del DB partono da sole all'avvio dell'API.
+UI su http://localhost:8080. Qui si usano PostgreSQL e Redis veri e il worker è un container separato.
+Le migrazioni del DB partono da sole all'avvio dell'API.
 
-## Sviluppo locale
+## Sviluppo
 
-Servono Node 22, PostgreSQL, Redis e `terraform` nel PATH (per il worker).
-
-```bash
-npm install
-set -a; . ./.env; set +a
-npm run dev:api      # http://localhost:3000
-npm run dev:worker
-npm run dev:web      # http://localhost:5173 (proxy /api verso l'API)
-```
-
-Modifiche allo schema DB: editare `apps/api/src/lib/schema.ts`, poi `npm run db:generate -w apps/api`.
+- `npm run dev:api`, `npm run dev:web`, `npm run dev:worker` (il worker serve solo con `REDIS_URL`).
+- Il `.env` nella radice viene letto automaticamente dall'API.
+- Modifiche allo schema DB: editare `apps/api/src/lib/schema.ts`, poi `npm run db:generate -w apps/api`.
 
 ## Limiti noti e prossimi passi
 

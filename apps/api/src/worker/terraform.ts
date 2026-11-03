@@ -15,18 +15,16 @@ export function terraform(
   onLine: (line: string) => void,
 ): Promise<{ code: number; output: string }> {
   return new Promise((resolve, reject) => {
+    // Ambiente del processo (serve su Windows: SystemRoot, APPDATA, TEMP, proxy...) senza i segreti dell'app
+    const { JWT_SECRET, ENCRYPTION_KEY, APP_USERS, DATABASE_URL, REDIS_URL, ...baseEnv } = process.env;
     const child = spawn(config.TERRAFORM_BIN, [...args], {
       cwd,
       env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
+        ...baseEnv,
         TF_IN_AUTOMATION: '1',
-        TF_PLUGIN_CACHE_DIR: process.env.TF_PLUGIN_CACHE_DIR ?? '',
         GENESYSCLOUD_OAUTHCLIENT_ID: creds.clientId,
         GENESYSCLOUD_OAUTHCLIENT_SECRET: creds.clientSecret,
         GENESYSCLOUD_REGION: creds.region,
-        HTTPS_PROXY: process.env.HTTPS_PROXY ?? '',
-        NO_PROXY: process.env.NO_PROXY ?? '',
       },
     });
     let output = '';
@@ -42,7 +40,13 @@ export function terraform(
     };
     child.stdout.on('data', handle);
     child.stderr.on('data', handle);
-    child.on('error', reject);
+    child.on('error', (e: NodeJS.ErrnoException) =>
+      reject(
+        e.code === 'ENOENT'
+          ? new Error(`Terraform non trovato ("${config.TERRAFORM_BIN}"): installalo e mettilo nel PATH, oppure imposta TERRAFORM_BIN nel .env`)
+          : e,
+      ),
+    );
     child.on('close', (code) => {
       if (partial) {
         output += partial;

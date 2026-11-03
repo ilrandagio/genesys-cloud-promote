@@ -1,6 +1,13 @@
 import { Worker } from 'bullmq';
-import { QUEUE_NAME, redisConnection } from '../lib/queue.js';
+import { Redis } from 'ioredis';
+import { config } from '../config.js';
+import { QUEUE_NAME } from '../lib/queue.js';
 import { runPortingJob } from './porting.js';
+
+if (!config.REDIS_URL) {
+  console.log('REDIS_URL non impostato: i job vengono eseguiti dall\'API (modalità locale), il worker separato non serve.');
+  process.exit(0);
+}
 
 /** Un job alla volta: evita apply concorrenti sullo stesso target */
 const worker = new Worker<{ jobId: string }>(
@@ -8,7 +15,7 @@ const worker = new Worker<{ jobId: string }>(
   async (job) => {
     await runPortingJob(job.data.jobId);
   },
-  { connection: redisConnection(), concurrency: 1 },
+  { connection: new Redis(config.REDIS_URL, { maxRetriesPerRequest: null }), concurrency: 1 },
 );
 
 worker.on('ready', () => console.log('Worker porting pronto'));

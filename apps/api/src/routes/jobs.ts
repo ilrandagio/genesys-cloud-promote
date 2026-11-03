@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { OBJECT_TYPES } from '../genesys/types.js';
 import { db, schema } from '../lib/db.js';
-import { portingQueue } from '../lib/queue.js';
+import { enqueuePorting } from '../lib/queue.js';
 import { getEnvironment, HttpError } from '../lib/repo.js';
 import { requireAuth } from './auth.js';
 
@@ -70,7 +70,7 @@ export async function jobRoutes(app: FastifyInstance) {
         createdBy: (req.user as { sub: string }).sub,
       })
       .returning();
-    await portingQueue.add('port', { jobId: job.id }, { jobId: job.id, attempts: 1 });
+    await enqueuePorting(job.id);
     return job;
   });
 

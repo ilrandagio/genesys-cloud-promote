@@ -51,6 +51,8 @@ export async function objectRoutes(app: FastifyInstance) {
         objects: z
           .array(z.object({ type: z.enum(OBJECT_TYPES), id: z.string(), name: z.string(), subtype: z.string().optional() }))
           .min(1),
+        /// Divisioni come nodi dell'albero (con azione propria). Disattivato di default.
+        includeDivisions: z.boolean().default(false),
       })
       .parse(req.body);
 
@@ -59,7 +61,7 @@ export async function objectRoutes(app: FastifyInstance) {
 
     const trees = [];
     for (const obj of body.objects) {
-      const tree = await buildDependencyTree(source, obj);
+      const tree = await buildDependencyTree(source, obj, { includeDivisions: body.includeDivisions });
       await comparer.annotate(tree);
       trees.push(tree);
     }

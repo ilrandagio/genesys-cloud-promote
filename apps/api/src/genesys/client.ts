@@ -98,10 +98,21 @@ export class NotFoundError extends Error {
  */
 export class PermissionError extends Error {
   readonly statusCode = 403;
+  /** Divisioni indicate da Genesys nella risposta (quelle dell'oggetto non leggibile) */
+  readonly divisions: { id?: string; name: string }[] = [];
   constructor(env: Pick<Environment, 'name' | 'clientId'>, path: string, body: string) {
     let detail = '';
+    let divisions: { id?: string; name: string }[] = [];
     try {
-      const b = JSON.parse(body) as { messageParams?: { permission?: string; divisions?: string }; message?: string };
+      const b = JSON.parse(body) as {
+        messageParams?: { permission?: string; divisions?: string; divisionUris?: string };
+        message?: string;
+      };
+      try {
+        divisions = (JSON.parse(b.messageParams?.divisionUris ?? '[]') as { id?: string; name: string }[]).filter((d) => d.name);
+      } catch {
+        /* formato inatteso: si usa solo il testo */
+      }
       const perm = b.messageParams?.permission;
       const divs = b.messageParams?.divisions?.replace(/\([0-9a-f-]{36}\)/gi, '').replace(/^\[|\]$/g, '');
       detail = perm
@@ -114,5 +125,6 @@ export class PermissionError extends Error {
       `Ambiente "${env.name}": all'OAuth client ${env.clientId} ${detail}. ` +
         `Aggiungere il permesso o la divisione al ruolo del client (Admin > OAuth > Roles). [GET ${path}]`,
     );
+    this.divisions = divisions;
   }
 }

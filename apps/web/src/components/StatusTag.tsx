@@ -41,4 +41,5 @@ export const TYPE_LABELS: Record<string, string> = {
   schedule: 'Schedule',
   schedulegroup: 'Schedule group',
   prompt: 'Prompt',
+  division: 'Divisione',
 };

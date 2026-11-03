@@ -8,7 +8,13 @@ export type ObjectType =
   | 'integration'
   | 'schedule'
   | 'schedulegroup'
-  | 'prompt';
+  | 'prompt'
+  | 'division';
+
+export interface DivisionRef {
+  id?: string;
+  name: string;
+}
 
 export type TargetStatus = 'missing' | 'same' | 'different' | 'present';
 export type PortAction = 'port' | 'reuse' | 'skip';
@@ -40,7 +46,8 @@ export interface DependencyNode {
   supported: boolean;
   repeated?: boolean;
   error?: string;
-  target?: { status: TargetStatus; id?: string; diff?: string[] };
+  division?: DivisionRef;
+  target?: { status: TargetStatus; id?: string; diff?: string[]; division?: DivisionRef; divisionMissing?: boolean };
   children: DependencyNode[];
 }
 

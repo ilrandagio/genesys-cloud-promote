@@ -1,6 +1,6 @@
 import { CATALOG } from './catalog.js';
 import { PermissionError, type GenesysClient } from './client.js';
-import type { DependencyNode, GcObjectRef, ObjectType, TargetInfo } from './types.js';
+import type { DependencyNode, DivisionRef, GcObjectRef, ObjectType, TargetInfo } from './types.js';
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -49,45 +49,81 @@ function diffKeys(a: any, b: any): string[] {
  * Gli elenchi del target vengono letti una sola volta per tipo.
  */
 export class TargetComparer {
-  private lists = new Map<ObjectType, Promise<any[]>>();
+  private targetLists = new Map<ObjectType, Promise<any[]>>();
+  private sourceLists = new Map<ObjectType, Promise<any[]>>();
+  private targetDivisions?: Promise<Set<string> | undefined>;
 
   constructor(
     private readonly source: GenesysClient,
     private readonly target: GenesysClient,
   ) {}
 
-  private list(type: ObjectType) {
-    if (!this.lists.has(type)) this.lists.set(type, this.target.listAll(CATALOG[type].listPath));
-    return this.lists.get(type)!;
+  private cached(cache: Map<ObjectType, Promise<any[]>>, client: GenesysClient, type: ObjectType) {
+    if (!cache.has(type)) cache.set(type, client.listAll(CATALOG[type].listPath));
+    return cache.get(type)!;
   }
 
-  async compare(obj: GcObjectRef): Promise<TargetInfo> {
-    const candidates = await this.list(obj.type);
+  /** Nomi delle divisioni del target (undefined se il client non può leggerle) */
+  private divisionsOnTarget() {
+    this.targetDivisions ??= this.target
+      .listAll('/api/v2/authorization/divisions')
+      .then((ds) => new Set(ds.map((d: any) => String(d.name).toLowerCase())))
+      .catch((e) => {
+        if (e instanceof PermissionError) return undefined;
+        throw e;
+      });
+    return this.targetDivisions;
+  }
+
+  /** Divisione dell'oggetto sul sorgente, letta dall'elenco del tipo (già paginato e in cache) */
+  async sourceDivision(obj: GcObjectRef): Promise<DivisionRef | undefined> {
+    try {
+      const item = (await this.cached(this.sourceLists, this.source, obj.type)).find((o) => o.id === obj.id);
+      return item?.division?.name ? { id: item.division.id, name: item.division.name } : undefined;
+    } catch (e) {
+      if (e instanceof PermissionError) return undefined;
+      throw e;
+    }
+  }
+
+  async compare(obj: GcObjectRef, sourceDivision?: DivisionRef): Promise<TargetInfo> {
+    const divisionMissing = sourceDivision
+      ? await this.divisionsOnTarget().then((set) => (set ? !set.has(sourceDivision.name.toLowerCase()) : undefined))
+      : undefined;
+
+    const candidates = await this.cached(this.targetLists, this.target, obj.type);
     const match = candidates.find(
       (c) =>
         c.name?.toLowerCase() === obj.name.toLowerCase() &&
         (obj.type !== 'flow' || !obj.subtype || c.type?.toUpperCase() === obj.subtype.toUpperCase()),
     );
-    if (!match) return { status: 'missing' };
+    if (!match) return { status: 'missing', divisionMissing };
 
+    const division: DivisionRef | undefined = match.division?.name
+      ? { id: match.division.id, name: match.division.name }
+      : undefined;
     const def = CATALOG[obj.type];
-    if (!def.comparable) return { status: 'present', id: match.id };
+    if (!def.comparable) return { status: 'present', id: match.id, division, divisionMissing };
 
     const [src, tgt] = await Promise.all([
       this.source.get(def.getPath.replace('{id}', obj.id)),
       this.target.get(def.getPath.replace('{id}', match.id)),
     ]);
-    const a = normalize(src);
-    const b = normalize(tgt);
-    const diff = diffKeys(a, b);
-    return diff.length ? { status: 'different', id: match.id, diff } : { status: 'same', id: match.id };
+    const diff = diffKeys(normalize(src), normalize(tgt));
+    if (sourceDivision && division && sourceDivision.name.toLowerCase() !== division.name.toLowerCase()) {
+      diff.push('division');
+    }
+    return diff.length
+      ? { status: 'different', id: match.id, diff, division, divisionMissing }
+      : { status: 'same', id: match.id, division, divisionMissing };
   }
 
-  /** Arricchisce ogni nodo dell'albero con lo stato sul target */
+  /** Arricchisce ogni nodo dell'albero con divisione e stato sul target */
   async annotate(node: DependencyNode): Promise<void> {
     if (node.supported) {
       try {
-        node.target = await this.compare(node);
+        node.division ??= await this.sourceDivision(node);
+        node.target = await this.compare(node, node.division);
       } catch (e) {
         if (!(e instanceof PermissionError)) throw e;
         node.error = node.error ? `${node.error}\n${e.message}` : e.message;

@@ -76,6 +76,13 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_architect_schedulegroups',
     comparable: true,
   },
+  division: {
+    label: 'Divisione',
+    listPath: '/api/v2/authorization/divisions',
+    getPath: '/api/v2/authorization/divisions/{id}',
+    tfType: 'genesyscloud_auth_division',
+    comparable: true,
+  },
   prompt: {
     label: 'User prompt',
     listPath: '/api/v2/architect/prompts',

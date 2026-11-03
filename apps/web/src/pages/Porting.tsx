@@ -12,6 +12,7 @@ import {
   Select,
   Space,
   Steps,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -72,6 +73,7 @@ export default function PortingPage() {
   const [trees, setTrees] = useState<DependencyNode[]>();
   const [actions, setActions] = useState<Map<string, PortAction>>(new Map());
   const [analyzing, setAnalyzing] = useState(false);
+  const [includeDivisions, setIncludeDivisions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const envs = useQuery({ queryKey: ['environments'], queryFn: () => api<Environment[]>('/api/environments') });
@@ -106,6 +108,7 @@ export default function PortingPage() {
           sourceEnvId: sourceId,
           targetEnvId: targetId,
           objects: [...selected.values()].map(({ type, id, name, subtype }) => ({ type, id, name, subtype })),
+          includeDivisions,
         },
       });
       const acts = new Map<string, PortAction>();
@@ -267,7 +270,20 @@ export default function PortingPage() {
         <Card
           title="2. Oggetti sul sorgente"
           extra={
-            <Space>
+            <Space size="large">
+              <Tooltip title="Mostra la divisione di ogni oggetto come dipendenza, con la scelta se portarla o usare quella del target. Da spento, le divisioni vengono comunque abbinate per nome.">
+                <Space size={6}>
+                  <Switch
+                    size="small"
+                    checked={includeDivisions}
+                    onChange={(v) => {
+                      setIncludeDivisions(v);
+                      resetAnalysis();
+                    }}
+                  />
+                  <Typography.Text>Includi divisioni</Typography.Text>
+                </Space>
+              </Tooltip>
               <Typography.Text>{selected.size} selezionati</Typography.Text>
               <Button
                 type="primary"
@@ -437,6 +453,30 @@ export default function PortingPage() {
                   title: 'Tipo',
                   render: (_, n) => (n.supported ? TYPE_LABELS[n.type] : <Tag>{n.rawType}</Tag>),
                   width: 160,
+                },
+                {
+                  title: 'Divisione',
+                  width: 200,
+                  render: (_, n) => {
+                    if (!n.division) return null;
+                    const tgt = n.target?.division;
+                    const differs = tgt && tgt.name.toLowerCase() !== n.division.name.toLowerCase();
+                    return (
+                      <Space size={4} wrap>
+                        <Typography.Text>{n.division.name}</Typography.Text>
+                        {differs && (
+                          <Tooltip title={`Sul target l'oggetto è nella divisione "${tgt.name}"`}>
+                            <Tag color="orange">target: {tgt.name}</Tag>
+                          </Tooltip>
+                        )}
+                        {n.target?.divisionMissing && (
+                          <Tooltip title="Questa divisione non esiste sul target: va creata o portata (Includi divisioni)">
+                            <Tag color="red">assente sul target</Tag>
+                          </Tooltip>
+                        )}
+                      </Space>
+                    );
+                  },
                 },
                 {
                   title: 'Sul target',

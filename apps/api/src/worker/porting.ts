@@ -2,11 +2,12 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { CATALOG } from '../genesys/catalog.js';
-import { GenesysClient } from '../genesys/client.js';
+import { GenesysClient, PermissionError } from '../genesys/client.js';
 import { awsRegion } from '../genesys/regions.js';
 import type { PortItem } from '../genesys/types.js';
 import { eq, sql } from 'drizzle-orm';
 import { db, schema } from '../lib/db.js';
+import type { Environment } from '../lib/schema.js';
 import { getEnvironment } from '../lib/repo.js';
 import {
   ensureProvider,
@@ -118,11 +119,27 @@ export async function runPortingJob(jobId: string) {
     }
 
     const idMap = new Map<string, string>();
+    // Dipendenze riusate: ID sorgente -> ID target
     for (const it of items) {
       if (it.action !== 'port' && it.targetId) idMap.set(it.id.toLowerCase(), it.targetId);
     }
+    // Oggetti portati nello stesso job: riferimento Terraform alla risorsa (es. una divisione creata ora)
+    for (const [it, addr] of addresses) idMap.set(it.id.toLowerCase(), `\${${addr}.id}`);
+
+    // Divisioni non selezionate esplicitamente: abbinamento per nome tra sorgente e target
+    const missingDivisions = await mapDivisionsByName(job.sourceEnv, job.targetEnv, idMap, log.info);
+
     cfg = remapIds(cfg, idMap);
     ensureProvider(cfg, config.GENESYS_PROVIDER_VERSION);
+
+    const stillReferenced = remainingGuids(cfg);
+    const blocking = missingDivisions.filter((d) => stillReferenced.has(d.id.toLowerCase()));
+    if (blocking.length) {
+      throw new Error(
+        `Divisioni assenti sul target: ${blocking.map((d) => `"${d.name}"`).join(', ')}. ` +
+          `Crearle sul target oppure rianalizzare con "Includi divisioni" e portarle.`,
+      );
+    }
 
     // Avviso su riferimenti al sorgente non risolti (dipendenze saltate e assenti sul target)
     const sourceIds = new Set(items.map((i) => i.id.toLowerCase()));
@@ -183,4 +200,38 @@ export async function runPortingJob(jobId: string) {
     // L'export può contenere secret (tfvars): non lasciare nulla su disco
     if (!process.env.KEEP_WORKDIR) await rm(workDir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Aggiunge a idMap l'abbinamento per nome tra le divisioni del sorgente e quelle del target
+ * (gli ID delle divisioni cambiano tra un'org e l'altra). Non sovrascrive scelte esplicite.
+ * Restituisce le divisioni del sorgente che non esistono sul target.
+ */
+async function mapDivisionsByName(
+  sourceEnv: Environment,
+  targetEnv: Environment,
+  idMap: Map<string, string>,
+  info: (l: string) => void,
+): Promise<{ id: string; name: string }[]> {
+  let src: { id: string; name: string }[];
+  let tgt: { id: string; name: string }[];
+  try {
+    [src, tgt] = await Promise.all([
+      new GenesysClient(sourceEnv).listAll('/api/v2/authorization/divisions'),
+      new GenesysClient(targetEnv).listAll('/api/v2/authorization/divisions'),
+    ]);
+  } catch (e) {
+    if (!(e instanceof PermissionError)) throw e;
+    info(`ATTENZIONE: divisioni non leggibili, nessuna rimappatura automatica (${e.message})`);
+    return [];
+  }
+  const byName = new Map(tgt.map((d) => [d.name.toLowerCase(), d.id]));
+  const missing: { id: string; name: string }[] = [];
+  for (const d of src) {
+    if (idMap.has(d.id.toLowerCase())) continue;
+    const targetId = byName.get(d.name.toLowerCase());
+    if (targetId) idMap.set(d.id.toLowerCase(), targetId);
+    else missing.push(d);
+  }
+  return missing;
 }

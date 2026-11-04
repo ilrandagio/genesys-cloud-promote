@@ -13,7 +13,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 3. **Porting**:
    - scelta di sorgente e target;
    - elenco degli oggetti del sorgente per tipo (flow, code, skill, wrap-up code, language, data action,
-     integrazioni, schedule, schedule group, prompt) e selezione multipla anche tra tipi diversi;
+     integrazioni, schedule, schedule group, prompt, script agente, divisioni) e selezione multipla anche tra tipi diversi;
    - **analisi**: albero delle dipendenze di ogni oggetto, con lo stato sul target per ciascun nodo:
      *Mancante*, *Presente uguale*, *Presente diverso* (con l'elenco dei campi diversi), *Presente*
      (esiste, contenuto non confrontato: i flow);
@@ -34,15 +34,20 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
 - **Discovery e confronto** usano direttamente la Platform API (veloce, nessuno stato):
   - flow → Architect *Dependency Tracking API* (`/api/v2/architect/dependencytracking/object`);
   - code → in-queue flow, whisper prompt, skill del bullseye, wrap-up code;
-  - data action → integrazione; schedule group → schedule.
+  - data action → integrazione; schedule group → schedule;
+  - script agente → tutti gli ID presenti nel JSON dello script (data action, code, flow, wrap-up code…),
+    riconosciuti confrontandoli con gli oggetti dell'org sorgente; gli ID non riconosciuti sono mostrati a parte.
   - Il match sul target è **per nome** (per i flow anche per tipo). Il confronto ignora ID, date,
     versioni e GUID, così i riferimenti contano per contenuto e non per ID.
 - **Porting** delegato a CX as Code (provider `mypurecloud/genesyscloud`):
   1. `genesyscloud_tf_export` sul sorgente, solo per gli oggetti con azione *Porta*
      (`enable_dependency_resolution = false`: le dipendenze le decide l'utente);
   2. gli ID delle dipendenze *Usa quella del target* vengono rimappati sorgente → target nella configurazione esportata;
-  3. gli oggetti già presenti sul target vengono importati nello state (`terraform import`): sono aggiornati, non duplicati;
-  4. `plan` oppure `apply` in due fasi (prima gli oggetti non-flow, poi i flow, con un secondo tentativo
+  3. gli ID scritti in chiaro nei file esportati (JSON degli script, YAML dei flow) vengono sostituiti
+     con gli ID del target; per gli oggetti creati nello stesso porting si usa un segnaposto `{{gcp_N}}`
+     riempito da Terraform tramite `substitutions`, così l'ordine di creazione è garantito;
+  4. gli oggetti già presenti sul target vengono importati nello state (`terraform import`): sono aggiornati, non duplicati;
+  5. `plan` oppure `apply` in due fasi (prima gli oggetti non-flow, poi i flow, con un secondo tentativo
      per le dipendenze tra flow).
   La cartella di lavoro (che può contenere secret) viene cancellata a fine job.
 

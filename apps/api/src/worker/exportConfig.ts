@@ -1,3 +1,5 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { CATALOG } from '../genesys/catalog.js';
 import type { PortItem } from '../genesys/types.js';
 
@@ -90,4 +92,71 @@ export function ensureProvider(cfg: TfJson, version: string) {
   const rp = Array.isArray(tf.required_providers) ? tf.required_providers[0] : tf.required_providers;
   rp.genesyscloud ??= { source: 'mypurecloud/genesyscloud', version };
   cfg.provider ??= { genesyscloud: {} };
+}
+
+/**
+ * Sostituisce gli ID del sorgente anche nei file referenziati dalle risorse (attributo filepath):
+ * il JSON degli script agente e lo YAML dei flow possono contenere ID in chiaro.
+ * - ID di oggetti già presenti sul target: sostituiti con l'ID del target.
+ * - ID di oggetti creati nello stesso job: sostituiti con un segnaposto {{gcp_N}} che Terraform
+ *   riempie tramite l'attributo "substitutions" della risorsa (così l'ordine di creazione è garantito).
+ * Restituisce, per file, quante sostituzioni sono state fatte.
+ */
+export async function remapReferencedFiles(
+  cfg: TfJson,
+  baseDir: string,
+  targetIds: Map<string, string>,
+  sameJobRefs: Map<string, string>,
+): Promise<{ file: string; replaced: number; placeholders: number; untouched: number }[]> {
+  const report: { file: string; replaced: number; placeholders: number; untouched: number }[] = [];
+  const placeholderOf = new Map<string, string>();
+  let counter = 0;
+
+  for (const labels of Object.values(cfg.resource ?? {})) {
+    for (const attrs of Object.values(labels)) {
+      const filepath: unknown = attrs?.filepath;
+      if (typeof filepath !== 'string' || filepath.includes('${')) continue;
+      const abs = path.resolve(baseDir, filepath);
+      let content: string;
+      try {
+        content = await readFile(abs, 'utf8');
+      } catch {
+        continue; // file non presente: lo segnalerà Terraform
+      }
+
+      let replaced = 0;
+      let placeholders = 0;
+      let untouched = 0;
+      const used: Record<string, string> = {};
+      const next = content.replace(GUID_G, (g) => {
+        const key = g.toLowerCase();
+        const tgt = targetIds.get(key);
+        if (tgt) {
+          replaced++;
+          return tgt;
+        }
+        const addr = sameJobRefs.get(key);
+        if (addr) {
+          if (!placeholderOf.has(key)) placeholderOf.set(key, `gcp_${++counter}`);
+          const name = placeholderOf.get(key)!;
+          used[name] = `\${${addr}.id}`;
+          placeholders++;
+          return `{{${name}}}`;
+        }
+        untouched++;
+        return g;
+      });
+      if (next === content) {
+        if (untouched) report.push({ file: filepath, replaced, placeholders, untouched });
+        continue;
+      }
+
+      await writeFile(abs, next);
+      if (Object.keys(used).length) attrs.substitutions = { ...(attrs.substitutions ?? {}), ...used };
+      // L'hash del contenuto deve seguire il file modificato
+      if ('file_content_hash' in attrs) attrs.file_content_hash = `\${filesha256("${filepath.replace(/\\/g, '/')}")}`;
+      report.push({ file: filepath, replaced, placeholders, untouched });
+    }
+  }
+  return report;
 }

@@ -65,6 +65,37 @@ export class GenesysClient {
     return res.json() as Promise<T>;
   }
 
+  async post<T = any>(path: string, body: unknown, attempt = 0): Promise<T> {
+    const res = await fetch(this.apiBase + path, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await this.token()}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 429 && attempt < 5) {
+      await new Promise((r) => setTimeout(r, Number(res.headers.get('retry-after') ?? 2) * 1000));
+      return this.post(path, body, attempt + 1);
+    }
+    if (res.status === 404) throw new NotFoundError(path);
+    if (res.status === 403) throw new PermissionError(this.env, path, await res.text());
+    if (!res.ok) throw new Error(`Ambiente "${this.env.name}": POST ${path} -> ${res.status}: ${await res.text()}`);
+    return res.json() as Promise<T>;
+  }
+
+  /**
+   * Contenuto completo di uno script agente (pagine, componenti, azioni, variabili):
+   * export asincrono che restituisce un URL temporaneo da cui scaricare il JSON.
+   */
+  async exportScript(scriptId: string): Promise<unknown> {
+    const { url } = await this.post<{ url: string }>(`/api/v2/scripts/${scriptId}/export`, {});
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Ambiente "${this.env.name}": download dello script ${scriptId} fallito (${res.status})`);
+    return res.json();
+  }
+
   /** Scorre tutte le pagine di un endpoint a paginazione pageNumber/pageSize */
   async listAll<T = any>(path: string, extraQuery = ''): Promise<T[]> {
     const out: T[] = [];

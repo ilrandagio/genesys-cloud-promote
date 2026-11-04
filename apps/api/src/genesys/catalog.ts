@@ -76,6 +76,14 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_architect_schedulegroups',
     comparable: true,
   },
+  script: {
+    label: 'Script agente',
+    listPath: '/api/v2/scripts',
+    getPath: '/api/v2/scripts/{id}',
+    tfType: 'genesyscloud_script',
+    // Il contenuto (pagine, componenti) non è nella risposta di dettaglio: si confronta solo l'esistenza
+    comparable: false,
+  },
   division: {
     label: 'Divisione',
     listPath: '/api/v2/authorization/divisions',
@@ -112,6 +120,9 @@ export function fromDependencyType(dtType: string): ObjectType | undefined {
       return 'schedulegroup';
     case 'USERPROMPT':
       return 'prompt';
+    case 'SCRIPT':
+    case 'COMPOSERSCRIPT':
+      return 'script';
     default:
       return dtType.endsWith('FLOW') || dtType === 'WORKFLOW' ? 'flow' : undefined;
   }

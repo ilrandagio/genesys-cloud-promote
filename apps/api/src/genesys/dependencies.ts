@@ -4,6 +4,52 @@ import { DIVISIONED_TYPES, type DependencyNode, type GcObjectRef, type ObjectTyp
 
 type Get = (path: string) => Promise<any>;
 
+const GUID_G = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** Tipi che uno script può referenziare per ID (data action, code, flow, wrap-up...) */
+const SCRIPT_REFERENCE_TYPES: ObjectType[] = [
+  'dataaction',
+  'queue',
+  'flow',
+  'wrapupcode',
+  'skill',
+  'language',
+  'prompt',
+  'schedule',
+  'schedulegroup',
+  'integration',
+  'script',
+];
+
+interface IdIndexEntry {
+  type: ObjectType;
+  name: string;
+  subtype?: string;
+}
+
+/**
+ * Indice ID -> oggetto dell'org sorgente, costruito una sola volta per analisi
+ * (solo se serve, cioè quando si incontra uno script). I tipi non leggibili per permessi vengono saltati.
+ */
+export function lazyIdIndex(client: GenesysClient) {
+  let index: Promise<Map<string, IdIndexEntry>> | undefined;
+  return () =>
+    (index ??= (async () => {
+      const map = new Map<string, IdIndexEntry>();
+      for (const type of SCRIPT_REFERENCE_TYPES) {
+        try {
+          for (const o of await client.listAll(CATALOG[type].listPath)) {
+            map.set(String(o.id).toLowerCase(), { type, name: o.name ?? o.id, subtype: type === 'flow' ? o.type : undefined });
+          }
+        } catch (e) {
+          // Un tipo non leggibile (permessi, endpoint non disponibile) non deve far perdere gli altri
+          if (!(e instanceof PermissionError) && !(e instanceof NotFoundError)) throw e;
+        }
+      }
+      return map;
+    })());
+}
+
 interface RawDep {
   type: ObjectType | undefined;
   rawType: string;
@@ -16,8 +62,32 @@ interface RawDep {
  * Risolve le dipendenze dirette di un oggetto sul sorgente.
  * Flow: Dependency Tracking API. Altri tipi: lettura della configurazione.
  */
-async function directDependencies(client: GenesysClient, get: Get, obj: GcObjectRef): Promise<RawDep[]> {
+async function directDependencies(
+  client: GenesysClient,
+  get: Get,
+  obj: GcObjectRef,
+  idIndex: () => Promise<Map<string, IdIndexEntry>>,
+): Promise<RawDep[]> {
   switch (obj.type) {
+    case 'script': {
+      // Gli script contengono ID in chiaro: si cercano tutti i GUID nel JSON esportato
+      // e si riconoscono confrontandoli con gli oggetti dell'org sorgente.
+      const content = JSON.stringify(await client.exportScript(obj.id));
+      const index = await idIndex();
+      const deps: RawDep[] = [];
+      for (const guid of new Set((content.match(GUID_G) ?? []).map((g) => g.toLowerCase()))) {
+        if (guid === obj.id.toLowerCase()) continue;
+        const hit = index.get(guid);
+        if (hit) {
+          deps.push({ type: hit.type, rawType: hit.type.toUpperCase(), id: guid, name: hit.name, subtype: hit.subtype });
+        } else {
+          // ID non riconosciuto (utente, gruppo, tipo non gestito o oggetto non leggibile): resterà invariato nel porting
+          deps.push({ type: undefined, rawType: 'ID NON RICONOSCIUTO', id: guid, name: guid });
+        }
+      }
+      return deps;
+    }
+
     case 'flow': {
       const flow = await get(`/api/v2/flows/${obj.id}`);
       const objectType = flowDependencyType(flow.type);
@@ -86,12 +156,14 @@ async function nameOf(get: Get, type: ObjectType, id: string): Promise<string> {
 export async function buildDependencyTree(
   client: GenesysClient,
   root: GcObjectRef,
-  options: { includeDivisions?: boolean; maxDepth?: number } = {},
+  options: { includeDivisions?: boolean; maxDepth?: number; idIndex?: ReturnType<typeof lazyIdIndex> } = {},
 ): Promise<DependencyNode> {
   const { includeDivisions = false, maxDepth = 6 } = options;
   const seen = new Set<string>();
   // Ogni oggetto viene letto una sola volta per analisi, anche se compare più volte
   const memo = new Map<string, Promise<any>>();
+  // Indice condivisibile tra più alberi della stessa analisi
+  const idIndex = options.idIndex ?? lazyIdIndex(client);
   const get: Get = (path) => {
     if (!memo.has(path)) memo.set(path, client.get(path));
     return memo.get(path)!;
@@ -106,7 +178,7 @@ export async function buildDependencyTree(
 
     let deps: RawDep[] = [];
     try {
-      deps = await directDependencies(client, get, obj);
+      deps = await directDependencies(client, get, obj, idIndex);
     } catch (e) {
       if (e instanceof PermissionError) {
         node.error = e.message;

@@ -42,4 +42,5 @@ export const TYPE_LABELS: Record<string, string> = {
   schedulegroup: 'Schedule group',
   prompt: 'Prompt',
   division: 'Divisione',
+  script: 'Script agente',
 };

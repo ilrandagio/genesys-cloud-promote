@@ -14,6 +14,7 @@ import {
   includeFilter,
   remainingGuids,
   remapIds,
+  remapReferencedFiles,
   selectResources,
   type TfJson,
 } from './exportConfig.js';
@@ -118,18 +119,32 @@ export async function runPortingJob(jobId: string) {
       throw new Error(`Oggetti non trovati nell'export: ${missing.map((m) => `${m.type} "${m.name}"`).join(', ')}`);
     }
 
-    const idMap = new Map<string, string>();
-    // Dipendenze riusate: ID sorgente -> ID target
+    // ID sorgente -> ID target: dipendenze riusate (o già presenti) e divisioni abbinate per nome
+    const targetIds = new Map<string, string>();
     for (const it of items) {
-      if (it.action !== 'port' && it.targetId) idMap.set(it.id.toLowerCase(), it.targetId);
+      if (it.action !== 'port' && it.targetId) targetIds.set(it.id.toLowerCase(), it.targetId);
     }
-    // Oggetti portati nello stesso job: riferimento Terraform alla risorsa (es. una divisione creata ora)
-    for (const [it, addr] of addresses) idMap.set(it.id.toLowerCase(), `\${${addr}.id}`);
+    // ID sorgente -> risorsa Terraform: oggetti creati o aggiornati in questo stesso job
+    const sameJobRefs = new Map<string, string>();
+    for (const [it, addr] of addresses) sameJobRefs.set(it.id.toLowerCase(), addr);
 
     // Divisioni non selezionate esplicitamente: abbinamento per nome tra sorgente e target
-    const missingDivisions = await mapDivisionsByName(job.sourceEnv, job.targetEnv, idMap, log.info);
+    const missingDivisions = await mapDivisionsByName(job.sourceEnv, job.targetEnv, targetIds, log.info);
 
-    cfg = remapIds(cfg, idMap);
+    // Configurazione Terraform: ID del target oppure riferimento alla risorsa creata nel job
+    const cfgMap = new Map(targetIds);
+    for (const [id, addr] of sameJobRefs) if (!cfgMap.has(id)) cfgMap.set(id, `\${${addr}.id}`);
+    cfg = remapIds(cfg, cfgMap);
+
+    // File esportati (JSON degli script, YAML dei flow): ID scritti in chiaro nel contenuto
+    const fileReport = await remapReferencedFiles(cfg, exportDir, targetIds, sameJobRefs);
+    for (const r of fileReport) {
+      log.info(
+        `ID sostituiti in ${r.file}: ${r.replaced} con ID del target` +
+          (r.placeholders ? `, ${r.placeholders} con riferimenti a oggetti creati in questo porting` : '') +
+          (r.untouched ? ` — ATTENZIONE: ${r.untouched} ID non riconosciuti lasciati invariati (verificare sul target)` : ''),
+      );
+    }
     ensureProvider(cfg, config.GENESYS_PROVIDER_VERSION);
 
     const stillReferenced = remainingGuids(cfg);

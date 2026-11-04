@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { CATALOG } from '../genesys/catalog.js';
 import { GenesysClient } from '../genesys/client.js';
 import { TargetComparer } from '../genesys/compare.js';
-import { buildDependencyTree } from '../genesys/dependencies.js';
+import { buildDependencyTree, lazyIdIndex } from '../genesys/dependencies.js';
 import { OBJECT_TYPES, type ObjectType } from '../genesys/types.js';
 import { getEnvironment } from '../lib/repo.js';
 import { requireAuth } from './auth.js';
@@ -60,8 +60,9 @@ export async function objectRoutes(app: FastifyInstance) {
     const comparer = new TargetComparer(source, target);
 
     const trees = [];
+    const idIndex = lazyIdIndex(source);
     for (const obj of body.objects) {
-      const tree = await buildDependencyTree(source, obj, { includeDivisions: body.includeDivisions });
+      const tree = await buildDependencyTree(source, obj, { includeDivisions: body.includeDivisions, idIndex });
       await comparer.annotate(tree);
       trees.push(tree);
     }

@@ -10,6 +10,7 @@ export const OBJECT_TYPES = [
   'schedulegroup',
   'prompt',
   'division',
+  'script',
 ] as const;
 
 /** Tipi che in Genesys Cloud appartengono a una divisione */
@@ -19,6 +20,7 @@ export const DIVISIONED_TYPES: ReadonlySet<ObjectType> = new Set<ObjectType>([
   'schedule',
   'schedulegroup',
   'wrapupcode',
+  'script',
 ]);
 
 export type ObjectType = (typeof OBJECT_TYPES)[number];

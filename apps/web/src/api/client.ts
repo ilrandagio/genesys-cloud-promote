@@ -9,7 +9,8 @@ export type ObjectType =
   | 'schedule'
   | 'schedulegroup'
   | 'prompt'
-  | 'division';
+  | 'division'
+  | 'script';
 
 export interface DivisionRef {
   id?: string;

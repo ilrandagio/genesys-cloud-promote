@@ -107,13 +107,16 @@ export async function remapReferencedFiles(
   baseDir: string,
   targetIds: Map<string, string>,
   sameJobRefs: Map<string, string>,
-): Promise<{ file: string; replaced: number; placeholders: number; untouched: number }[]> {
-  const report: { file: string; replaced: number; placeholders: number; untouched: number }[] = [];
+): Promise<{ file: string; replaced: number; placeholders: number }[]> {
+  const report: { file: string; replaced: number; placeholders: number }[] = [];
+  // ID sorgente della risorsa stessa: dentro il proprio file non va mai sostituito
+  const ownIdOf = new Map([...sameJobRefs].map(([id, addr]) => [addr, id]));
   const placeholderOf = new Map<string, string>();
   let counter = 0;
 
-  for (const labels of Object.values(cfg.resource ?? {})) {
-    for (const attrs of Object.values(labels)) {
+  for (const [type, labels] of Object.entries(cfg.resource ?? {})) {
+    for (const [label, attrs] of Object.entries(labels)) {
+      const ownId = ownIdOf.get(`${type}.${label}`);
       const filepath: unknown = attrs?.filepath;
       if (typeof filepath !== 'string' || filepath.includes('${')) continue;
       const abs = path.resolve(baseDir, filepath);
@@ -126,10 +129,12 @@ export async function remapReferencedFiles(
 
       let replaced = 0;
       let placeholders = 0;
-      let untouched = 0;
       const used: Record<string, string> = {};
+      // Si sostituiscono solo gli ID che corrispondono a oggetti dell'analisi;
+      // gli ID interni (pagine, componenti, variabili...) restano invariati
       const next = content.replace(GUID_G, (g) => {
         const key = g.toLowerCase();
+        if (key === ownId) return g;
         const tgt = targetIds.get(key);
         if (tgt) {
           replaced++;
@@ -143,19 +148,15 @@ export async function remapReferencedFiles(
           placeholders++;
           return `{{${name}}}`;
         }
-        untouched++;
         return g;
       });
-      if (next === content) {
-        if (untouched) report.push({ file: filepath, replaced, placeholders, untouched });
-        continue;
-      }
+      if (next === content) continue;
 
       await writeFile(abs, next);
       if (Object.keys(used).length) attrs.substitutions = { ...(attrs.substitutions ?? {}), ...used };
       // L'hash del contenuto deve seguire il file modificato
       if ('file_content_hash' in attrs) attrs.file_content_hash = `\${filesha256("${filepath.replace(/\\/g, '/')}")}`;
-      report.push({ file: filepath, replaced, placeholders, untouched });
+      report.push({ file: filepath, replaced, placeholders });
     }
   }
   return report;

@@ -36,7 +36,8 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
   - code → in-queue flow, whisper prompt, skill del bullseye, wrap-up code;
   - data action → integrazione; schedule group → schedule;
   - script agente → tutti gli ID presenti nel JSON dello script (data action, code, flow, wrap-up code…),
-    riconosciuti confrontandoli con gli oggetti dell'org sorgente; gli ID non riconosciuti sono mostrati a parte.
+    riconosciuti confrontandoli con gli oggetti dell'org sorgente. Gli ID interni dello script (pagine, componenti,
+    variabili, azioni) e l'ID dello script stesso non sono dipendenze e non vengono mai sostituiti.
   - Il match sul target è **per nome** (per i flow anche per tipo). Il confronto ignora ID, date,
     versioni e GUID, così i riferimenti contano per contenuto e non per ID.
 - **Porting** delegato a CX as Code (provider `mypurecloud/genesyscloud`):

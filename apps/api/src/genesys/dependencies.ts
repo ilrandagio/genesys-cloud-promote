@@ -76,14 +76,11 @@ async function directDependencies(
       const index = await idIndex();
       const deps: RawDep[] = [];
       for (const guid of new Set((content.match(GUID_G) ?? []).map((g) => g.toLowerCase()))) {
+        // L'ID dello script e gli ID interni (pagine, componenti, variabili, azioni) non sono dipendenze:
+        // contano solo gli ID che corrispondono a oggetti dell'org
         if (guid === obj.id.toLowerCase()) continue;
         const hit = index.get(guid);
-        if (hit) {
-          deps.push({ type: hit.type, rawType: hit.type.toUpperCase(), id: guid, name: hit.name, subtype: hit.subtype });
-        } else {
-          // ID non riconosciuto (utente, gruppo, tipo non gestito o oggetto non leggibile): resterà invariato nel porting
-          deps.push({ type: undefined, rawType: 'ID NON RICONOSCIUTO', id: guid, name: guid });
-        }
+        if (hit) deps.push({ type: hit.type, rawType: hit.type.toUpperCase(), id: guid, name: hit.name, subtype: hit.subtype });
       }
       return deps;
     }

@@ -141,8 +141,7 @@ export async function runPortingJob(jobId: string) {
     for (const r of fileReport) {
       log.info(
         `ID sostituiti in ${r.file}: ${r.replaced} con ID del target` +
-          (r.placeholders ? `, ${r.placeholders} con riferimenti a oggetti creati in questo porting` : '') +
-          (r.untouched ? ` — ATTENZIONE: ${r.untouched} ID non riconosciuti lasciati invariati (verificare sul target)` : ''),
+          (r.placeholders ? `, ${r.placeholders} con riferimenti a oggetti creati in questo porting` : ''),
       );
     }
     ensureProvider(cfg, config.GENESYS_PROVIDER_VERSION);

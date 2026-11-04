@@ -111,8 +111,8 @@ export default function EnvironmentsPage() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Il nome dell'ambiente viene preso dall'org Genesys Cloud"
-          description="Al salvataggio le credenziali vengono verificate e il nome viene letto dall'organizzazione."
+          message="Il nome dell'ambiente è lo short name dell'org Genesys Cloud"
+          description="Al salvataggio le credenziali vengono verificate e lo short name (unico) viene letto dall'organizzazione."
         />
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
           <Form.Item name="region" label="Regione" rules={[{ required: true }]}>

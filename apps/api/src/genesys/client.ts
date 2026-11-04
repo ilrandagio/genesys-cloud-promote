@@ -79,10 +79,13 @@ export class GenesysClient {
     return out;
   }
 
-  /** Verifica rapida delle credenziali: restituisce il nome dell'org */
+  /**
+   * Verifica rapida delle credenziali: restituisce lo short name dell'org (thirdPartyOrgName),
+   * unico in tutto Genesys Cloud. Il nome esteso può ripetersi tra org diverse.
+   */
   async whoAmI(): Promise<string> {
-    const org = await this.get<{ name: string }>('/api/v2/organizations/me');
-    return org.name;
+    const org = await this.get<{ name: string; thirdPartyOrgName?: string }>('/api/v2/organizations/me');
+    return org.thirdPartyOrgName || org.name;
   }
 
   /** Dimentica il token in cache (da chiamare quando cambiano le credenziali dell'ambiente) */

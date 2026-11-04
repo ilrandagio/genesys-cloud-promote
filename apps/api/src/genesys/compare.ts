@@ -1,5 +1,5 @@
 import { CATALOG } from './catalog.js';
-import { PermissionError, type GenesysClient } from './client.js';
+import { NotFoundError, PermissionError, type GenesysClient } from './client.js';
 import { toDivision, type DependencyNode, type DivisionRef, type GcObjectRef, type ObjectType, type TargetInfo } from './types.js';
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,6 +52,8 @@ export class TargetComparer {
   private targetLists = new Map<ObjectType, Promise<any[]>>();
   private sourceLists = new Map<ObjectType, Promise<any[]>>();
   private targetDivisions?: Promise<Set<string> | undefined>;
+  /** Un oggetto può comparire in più rami: il confronto si fa una volta sola */
+  private results = new Map<string, Promise<TargetInfo>>();
 
   constructor(
     private readonly source: GenesysClient,
@@ -103,10 +105,18 @@ export class TargetComparer {
     const def = CATALOG[obj.type];
     if (!def.comparable) return { status: 'present', id: match.id, division, divisionMissing };
 
-    const [src, tgt] = await Promise.all([
-      this.source.get(def.getPath.replace('{id}', obj.id)),
-      this.target.get(def.getPath.replace('{id}', match.id)),
-    ]);
+    let src: unknown;
+    let tgt: unknown;
+    try {
+      [src, tgt] = await Promise.all([
+        this.source.get(def.getPath.replace('{id}', obj.id)),
+        this.target.get(def.getPath.replace('{id}', match.id)),
+      ]);
+    } catch (e) {
+      // Dettaglio non disponibile: l'oggetto esiste sul target, ma il contenuto non si può confrontare
+      if (e instanceof NotFoundError) return { status: 'present', id: match.id, division, divisionMissing };
+      throw e;
+    }
     const diff = diffKeys(normalize(src), normalize(tgt));
     if (sourceDivision && division && sourceDivision.name.toLowerCase() !== division.name.toLowerCase()) {
       diff.push('division');
@@ -121,7 +131,9 @@ export class TargetComparer {
     if (node.supported) {
       try {
         node.division ??= await this.sourceDivision(node);
-        node.target = await this.compare(node, node.division);
+        const key = `${node.type}:${node.id.toLowerCase()}`;
+        if (!this.results.has(key)) this.results.set(key, this.compare(node, node.division));
+        node.target = structuredClone(await this.results.get(key)!);
       } catch (e) {
         if (!(e instanceof PermissionError)) throw e;
         node.error = node.error ? `${node.error}\n${e.message}` : e.message;

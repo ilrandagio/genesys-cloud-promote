@@ -58,9 +58,29 @@ interface RawDep {
   subtype?: string;
 }
 
+/** Dipendenze non leggibili per un motivo noto: il nodo viene mostrato con il messaggio, l'analisi prosegue */
+class DependencyReadError extends Error {}
+
+/**
+ * Cerca nel contenuto (JSON di uno script o configurazione di un flow) gli ID che corrispondono
+ * a oggetti dell'org. Gli ID interni (pagine, componenti, azioni, variabili...) e l'ID dell'oggetto
+ * stesso vengono ignorati.
+ */
+function scanReferences(content: string, index: Map<string, IdIndexEntry>, selfId: string): RawDep[] {
+  const deps: RawDep[] = [];
+  for (const guid of new Set((content.match(GUID_G) ?? []).map((g) => g.toLowerCase()))) {
+    if (guid === selfId.toLowerCase()) continue;
+    const hit = index.get(guid);
+    if (hit) deps.push({ type: hit.type, rawType: hit.type.toUpperCase(), id: guid, name: hit.name, subtype: hit.subtype });
+  }
+  return deps;
+}
+
 /**
  * Risolve le dipendenze dirette di un oggetto sul sorgente.
- * Flow: Dependency Tracking API. Altri tipi: lettura della configurazione.
+ * - Flow: Dependency Tracking API + ID trovati nella configurazione del flow (unione delle due).
+ * - Script: ID trovati nel JSON esportato.
+ * - Altri tipi: lettura della configurazione.
  */
 async function directDependencies(
   client: GenesysClient,
@@ -73,30 +93,40 @@ async function directDependencies(
       // Gli script contengono ID in chiaro: si cercano tutti i GUID nel JSON esportato
       // e si riconoscono confrontandoli con gli oggetti dell'org sorgente.
       const content = JSON.stringify(await client.exportScript(obj.id));
-      const index = await idIndex();
-      const deps: RawDep[] = [];
-      for (const guid of new Set((content.match(GUID_G) ?? []).map((g) => g.toLowerCase()))) {
-        // L'ID dello script e gli ID interni (pagine, componenti, variabili, azioni) non sono dipendenze:
-        // contano solo gli ID che corrispondono a oggetti dell'org
-        if (guid === obj.id.toLowerCase()) continue;
-        const hit = index.get(guid);
-        if (hit) deps.push({ type: hit.type, rawType: hit.type.toUpperCase(), id: guid, name: hit.name, subtype: hit.subtype });
-      }
-      return deps;
+      return scanReferences(content, await idIndex(), obj.id);
     }
 
     case 'flow': {
       const flow = await get(`/api/v2/flows/${obj.id}`);
-      const objectType = flowDependencyType(flow.type);
-      const res = await get(
-        `/api/v2/architect/dependencytracking/object?id=${obj.id}&objectType=${objectType}&consumedResources=true`,
-      );
-      // L'endpoint può restituire un oggetto singolo o una listing
-      const entity = Array.isArray(res?.entities) ? res.entities[0] : res;
-      const consumed: any[] = entity?.consumedResources ?? [];
-      return consumed
-        .filter((d) => !d.deleted)
-        .map((d) => ({ type: fromDependencyType(d.type), rawType: d.type, id: d.id, name: d.name ?? d.id }));
+      const deps: RawDep[] = [];
+      const problems: string[] = [];
+
+      // 1. Dependency Tracking API: affidabile solo se Genesys ha già calcolato le dipendenze del flow
+      try {
+        const res = await get(
+          `/api/v2/architect/dependencytracking/object?id=${obj.id}&objectType=${flowDependencyType(flow.type)}&consumedResources=true`,
+        );
+        const entity = Array.isArray(res?.entities) ? res.entities[0] : res;
+        for (const d of (entity?.consumedResources ?? []) as any[]) {
+          if (!d.deleted) deps.push({ type: fromDependencyType(d.type), rawType: d.type, id: d.id, name: d.name ?? d.id });
+        }
+      } catch (e) {
+        if (e instanceof PermissionError) problems.push(e.message);
+        else if (!(e instanceof NotFoundError)) throw e;
+      }
+
+      // 2. Configurazione del flow: gli ID degli oggetti usati (data action, code, altri flow, prompt...)
+      try {
+        const configuration = await get(`/api/v2/flows/${obj.id}/latestconfiguration`);
+        deps.push(...scanReferences(JSON.stringify(configuration), await idIndex(), obj.id));
+      } catch (e) {
+        if (e instanceof PermissionError) problems.push(e.message);
+        else if (e instanceof NotFoundError) problems.push(`Configurazione del flow "${obj.name}" non disponibile (mai pubblicato o salvato?)`);
+        else throw e;
+      }
+
+      if (!deps.length && problems.length) throw new DependencyReadError(problems.join('\n'));
+      return deps;
     }
 
     case 'queue': {
@@ -155,8 +185,10 @@ export async function buildDependencyTree(
   root: GcObjectRef,
   options: { includeDivisions?: boolean; maxDepth?: number; idIndex?: ReturnType<typeof lazyIdIndex> } = {},
 ): Promise<DependencyNode> {
-  const { includeDivisions = false, maxDepth = 6 } = options;
-  const seen = new Set<string>();
+  const { includeDivisions = false, maxDepth = 12 } = options;
+  // Ramo già calcolato per ogni oggetto: se l'oggetto ricompare altrove si mostra di nuovo
+  // con tutte le sue dipendenze, senza rileggerlo
+  const built = new Map<string, DependencyNode>();
   // Ogni oggetto viene letto una sola volta per analisi, anche se compare più volte
   const memo = new Map<string, Promise<any>>();
   // Indice condivisibile tra più alberi della stessa analisi
@@ -166,12 +198,20 @@ export async function buildDependencyTree(
     return memo.get(path)!;
   };
 
-  async function visit(obj: GcObjectRef, rawType: string, depth: number): Promise<DependencyNode> {
-    const key = `${obj.type}:${obj.id}`;
+  async function visit(
+    obj: GcObjectRef,
+    rawType: string,
+    depth: number,
+    ancestors: ReadonlySet<string>,
+  ): Promise<DependencyNode> {
+    const key = `${obj.type}:${obj.id.toLowerCase()}`;
     const node: DependencyNode = { ...obj, rawType, supported: true, children: [] };
-    if (seen.has(key)) return { ...node, repeated: true };
-    seen.add(key);
-    if (depth >= maxDepth) return node;
+    // Solo un vero ciclo (A usa B che usa A) interrompe il ramo
+    if (ancestors.has(key)) return { ...node, repeated: true };
+    const done = built.get(key);
+    if (done) return structuredClone({ ...done, rawType });
+    if (depth >= maxDepth) return { ...node, error: `Profondità massima (${maxDepth}) raggiunta: dipendenze non analizzate` };
+    const path = new Set(ancestors).add(key);
 
     let deps: RawDep[] = [];
     try {
@@ -181,7 +221,11 @@ export async function buildDependencyTree(
         node.error = e.message;
         // Anche se l'oggetto non è leggibile, Genesys indica in quale divisione si trova
         node.division = toDivision(e.divisions[0]);
-      } else if (!(e instanceof NotFoundError)) throw e;
+      } else if (e instanceof DependencyReadError) {
+        node.error = `Dipendenze non leggibili: ${e.message}`;
+      } else if (e instanceof NotFoundError) {
+        node.error = `Oggetto non trovato sul sorgente (${e.message})`;
+      } else throw e;
     }
 
     // Divisione dell'oggetto: letta dalla configurazione (o dal 403) e, se richiesto, aggiunta come dipendenza
@@ -209,18 +253,24 @@ export async function buildDependencyTree(
     }
 
     // Deduplica dipendenze dirette
-    const unique = new Map(deps.map((d) => [`${d.rawType}:${d.id}`, d]));
+    // Lo stesso oggetto può arrivare da più fonti (Dependency Tracking e configurazione): vince la prima
+    const unique = new Map<string, RawDep>();
+    for (const d of deps) {
+      const key = `${d.type ?? d.rawType}:${d.id.toLowerCase()}`;
+      if (!unique.has(key)) unique.set(key, d);
+    }
     for (const d of unique.values()) {
       if (!d.type) {
         node.children.push({ type: 'flow', id: d.id, name: d.name, rawType: d.rawType, supported: false, children: [] });
         continue;
       }
-      node.children.push(await visit({ type: d.type, id: d.id, name: d.name, subtype: d.subtype }, d.rawType, depth + 1));
+      node.children.push(await visit({ type: d.type, id: d.id, name: d.name, subtype: d.subtype }, d.rawType, depth + 1, path));
     }
+    built.set(key, node);
     return node;
   }
 
-  return visit(root, root.type.toUpperCase(), 0);
+  return visit(root, root.type.toUpperCase(), 0, new Set());
 }
 
 /** Appiattisce l'albero in un elenco unico di oggetti supportati (ordine: prima le foglie) */

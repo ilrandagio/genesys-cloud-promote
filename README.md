@@ -31,8 +31,12 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
            └─ worker  BullMQ (Redis): esegue i job di porting con Terraform (CX as Code)
 ```
 
-- **Discovery e confronto** usano direttamente la Platform API (veloce, nessuno stato):
-  - flow → Architect *Dependency Tracking API* (`/api/v2/architect/dependencytracking/object`);
+- **Discovery e confronto** usano direttamente la Platform API (veloce, nessuno stato). L'albero è completo e
+  ricorsivo: ogni oggetto trovato viene analizzato a sua volta, e se compare in più rami mostra ovunque tutte le sue
+  dipendenze; il ramo si ferma solo in caso di dipendenza circolare:
+  - flow → unione di due fonti: Architect *Dependency Tracking API* (`/api/v2/architect/dependencytracking/object`,
+    affidabile solo se Genesys ha già calcolato le dipendenze) e gli ID degli oggetti trovati nella configurazione
+    del flow (`/api/v2/flows/{id}/latestconfiguration`): data action, code, altri flow, prompt, script…;
   - code → in-queue flow, whisper prompt, skill del bullseye, wrap-up code;
   - data action → integrazione; schedule group → schedule;
   - script agente → tutti gli ID presenti nel JSON dello script (data action, code, flow, wrap-up code…),

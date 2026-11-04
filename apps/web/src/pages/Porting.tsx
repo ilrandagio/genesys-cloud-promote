@@ -443,7 +443,11 @@ export default function PortingPage() {
                       <Typography.Text strong={n.isRoot} type={n.supported ? undefined : 'secondary'}>
                         {name}
                       </Typography.Text>
-                      {n.repeated && <Tag>già elencato sopra</Tag>}
+                      {n.repeated && (
+                        <Tooltip title="Questo oggetto dipende (anche indirettamente) da un oggetto che lo contiene: il ramo si ferma qui">
+                          <Tag>dipendenza circolare</Tag>
+                        </Tooltip>
+                      )}
                       {n.error && (
                         <Tooltip title={n.error}>
                           <ExclamationCircleFilled style={{ color: '#ff4d4f' }} />

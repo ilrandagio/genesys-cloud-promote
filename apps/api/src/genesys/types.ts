@@ -78,7 +78,7 @@ export interface DependencyNode extends GcObjectRef {
   rawType?: string;
   target?: TargetInfo;
   children: DependencyNode[];
-  /** true se il nodo compare già più in alto nell'albero (evita cicli) */
+  /** true se l'oggetto è già un antenato in questo ramo: dipendenza circolare, il ramo si ferma qui */
   repeated?: boolean;
   /** Divisione sul sorgente (solo per i tipi che prevedono le divisioni) */
   division?: DivisionRef;

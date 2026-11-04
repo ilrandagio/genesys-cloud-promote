@@ -1,10 +1,11 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
+import { Alert, App, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
 import { useState } from 'react';
 import { api, type Environment } from '../api/client';
 
-type FormValues = Omit<Environment, 'id'> & { clientSecret?: string };
+/** Il nome non si inserisce: lo restituisce il backend leggendolo dall'org Genesys */
+type FormValues = Omit<Environment, 'id' | 'name'> & { clientSecret?: string };
 
 export default function EnvironmentsPage() {
   const { message } = App.useApp();
@@ -20,10 +21,10 @@ export default function EnvironmentsPage() {
       editing === 'new'
         ? api('/api/environments', { method: 'POST', body: v })
         : api(`/api/environments/${(editing as Environment).id}`, { method: 'PUT', body: v }),
-    onSuccess: () => {
+    onSuccess: (env) => {
       setEditing(null);
       qc.invalidateQueries({ queryKey: ['environments'] });
-      message.success('Ambiente salvato');
+      message.success(`Ambiente "${(env as Environment).name}" salvato`);
     },
     onError: (e) => message.error(e.message),
   });
@@ -99,16 +100,21 @@ export default function EnvironmentsPage() {
 
       <Modal
         open={editing !== null}
-        title={editing === 'new' ? 'Nuovo ambiente' : 'Modifica ambiente'}
+        title={editing === 'new' || editing === null ? 'Nuovo ambiente' : `Modifica ambiente "${editing.name}"`}
+        okText="Verifica e salva"
         onCancel={() => setEditing(null)}
         onOk={() => form.submit()}
         confirmLoading={save.isPending}
         destroyOnHidden
       >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Il nome dell'ambiente viene preso dall'org Genesys Cloud"
+          description="Al salvataggio le credenziali vengono verificate e il nome viene letto dall'organizzazione."
+        />
         <Form form={form} layout="vertical" onFinish={(v) => save.mutate(v)}>
-          <Form.Item name="name" label="Nome" rules={[{ required: true }]}>
-            <Input placeholder="es. DEV, TEST, PROD" />
-          </Form.Item>
           <Form.Item name="region" label="Regione" rules={[{ required: true }]}>
             <Select options={(regions.data ?? []).map((r) => ({ value: r, label: r }))} showSearch />
           </Form.Item>

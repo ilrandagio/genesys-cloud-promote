@@ -84,6 +84,11 @@ export class GenesysClient {
     const org = await this.get<{ name: string }>('/api/v2/organizations/me');
     return org.name;
   }
+
+  /** Dimentica il token in cache (da chiamare quando cambiano le credenziali dell'ambiente) */
+  static forget(envId: string) {
+    tokenCache.delete(envId);
+  }
 }
 
 export class NotFoundError extends Error {

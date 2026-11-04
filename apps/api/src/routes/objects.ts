@@ -4,7 +4,7 @@ import { CATALOG } from '../genesys/catalog.js';
 import { GenesysClient } from '../genesys/client.js';
 import { TargetComparer } from '../genesys/compare.js';
 import { buildDependencyTree, lazyIdIndex } from '../genesys/dependencies.js';
-import { OBJECT_TYPES, type ObjectType } from '../genesys/types.js';
+import { OBJECT_TYPES, toDivision, type ObjectType } from '../genesys/types.js';
 import { getEnvironment } from '../lib/repo.js';
 import { requireAuth } from './auth.js';
 
@@ -33,7 +33,7 @@ export async function objectRoutes(app: FastifyInstance) {
         name: o.name,
         subtype: type === 'flow' ? o.type : undefined,
         description: o.description ?? '',
-        division: o.division?.name,
+        division: toDivision(o.division)?.name,
         published: type === 'flow' ? Boolean(o.publishedVersion) : undefined,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));

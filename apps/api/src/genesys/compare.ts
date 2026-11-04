@@ -1,6 +1,6 @@
 import { CATALOG } from './catalog.js';
 import { PermissionError, type GenesysClient } from './client.js';
-import type { DependencyNode, DivisionRef, GcObjectRef, ObjectType, TargetInfo } from './types.js';
+import { toDivision, type DependencyNode, type DivisionRef, type GcObjectRef, type ObjectType, type TargetInfo } from './types.js';
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -79,7 +79,7 @@ export class TargetComparer {
   async sourceDivision(obj: GcObjectRef): Promise<DivisionRef | undefined> {
     try {
       const item = (await this.cached(this.sourceLists, this.source, obj.type)).find((o) => o.id === obj.id);
-      return item?.division?.name ? { id: item.division.id, name: item.division.name } : undefined;
+      return toDivision(item?.division);
     } catch (e) {
       if (e instanceof PermissionError) return undefined;
       throw e;
@@ -99,9 +99,7 @@ export class TargetComparer {
     );
     if (!match) return { status: 'missing', divisionMissing };
 
-    const division: DivisionRef | undefined = match.division?.name
-      ? { id: match.division.id, name: match.division.name }
-      : undefined;
+    const division: DivisionRef | undefined = toDivision(match.division);
     const def = CATALOG[obj.type];
     if (!def.comparable) return { status: 'present', id: match.id, division, divisionMissing };
 

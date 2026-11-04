@@ -1,6 +1,6 @@
 import { CATALOG, flowDependencyType, fromDependencyType } from './catalog.js';
 import { GenesysClient, NotFoundError, PermissionError } from './client.js';
-import { DIVISIONED_TYPES, type DependencyNode, type GcObjectRef, type ObjectType } from './types.js';
+import { DIVISIONED_TYPES, toDivision, type DependencyNode, type GcObjectRef, type ObjectType } from './types.js';
 
 type Get = (path: string) => Promise<any>;
 
@@ -180,7 +180,7 @@ export async function buildDependencyTree(
       if (e instanceof PermissionError) {
         node.error = e.message;
         // Anche se l'oggetto non è leggibile, Genesys indica in quale divisione si trova
-        if (e.divisions[0]) node.division = e.divisions[0];
+        node.division = toDivision(e.divisions[0]);
       } else if (!(e instanceof NotFoundError)) throw e;
     }
 
@@ -188,7 +188,7 @@ export async function buildDependencyTree(
     if (DIVISIONED_TYPES.has(obj.type) && !node.division) {
       try {
         const full = await get(CATALOG[obj.type].getPath.replace('{id}', obj.id));
-        if (full?.division?.id) node.division = { id: full.division.id, name: full.division.name ?? full.division.id };
+        node.division = toDivision(full?.division);
       } catch (e) {
         if (!(e instanceof PermissionError) && !(e instanceof NotFoundError)) throw e;
       }

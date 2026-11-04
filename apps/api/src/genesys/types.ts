@@ -47,6 +47,20 @@ export interface DivisionRef {
   name: string;
 }
 
+/**
+ * Divisione reale dell'oggetto, oppure undefined.
+ * Genesys indica gli oggetti senza divisione (es. script non assegnati) con id e nome "*":
+ * non è una divisione da cercare o creare sul target.
+ */
+export function toDivision(raw: { id?: string; name?: string } | null | undefined): DivisionRef | undefined {
+  if (!raw) return undefined;
+  const id = raw.id?.trim();
+  const name = raw.name?.trim();
+  if (!id && !name) return undefined;
+  if (id === '*' || name === '*') return undefined;
+  return { id, name: name || id! };
+}
+
 export interface TargetInfo {
   status: TargetStatus;
   id?: string;

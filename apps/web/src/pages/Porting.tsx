@@ -33,6 +33,9 @@ import { TargetStatusTag, TYPE_LABELS } from '../components/StatusTag';
 
 const keyOf = (o: { type: string; id: string }) => `${o.type}:${o.id}`;
 
+/** Tipi che in Genesys Cloud possono appartenere a una divisione */
+const DIVISIONED = new Set<ObjectType>(['flow', 'queue', 'schedule', 'schedulegroup', 'wrapupcode', 'script']);
+
 interface TreeRow extends Omit<DependencyNode, 'children'> {
   rowKey: string;
   isRoot: boolean;
@@ -458,7 +461,10 @@ export default function PortingPage() {
                   title: 'Divisione',
                   width: 200,
                   render: (_, n) => {
-                    if (!n.division) return null;
+                    if (!n.division) {
+                      // Tipi che prevedono una divisione ma l'oggetto non è assegnato a nessuna (es. script)
+                      return n.supported && DIVISIONED.has(n.type) ? <Typography.Text type="secondary">nessuna</Typography.Text> : null;
+                    }
                     const tgt = n.target?.division;
                     const differs = tgt && tgt.name.toLowerCase() !== n.division.name.toLowerCase();
                     return (

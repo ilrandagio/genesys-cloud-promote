@@ -14,6 +14,9 @@ export interface TfJson {
 
 const GUID_G = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
+/** Attributi che contengono percorsi o hash di file: gli ID nel nome del file non sono riferimenti */
+const FILE_ATTRIBUTES = new Set(['filepath', 'file_content_hash', 'filename']);
+
 const simplify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
@@ -75,10 +78,41 @@ export function remapIds<T>(value: T, idMap: Map<string, string>): T {
   return value;
 }
 
-/** GUID rimasti nella configurazione (potenziali riferimenti al sorgente non risolti) */
+/**
+ * Rimappa gli ID nella configurazione Terraform risorsa per risorsa:
+ * - non tocca l'ID della risorsa stessa (eviterebbe un riferimento a se stessa: "Self-referential block");
+ * - non tocca percorsi e hash dei file (il nome del file esportato contiene l'ID del sorgente).
+ * sameJobRefs: ID sorgente -> indirizzo della risorsa creata nello stesso job.
+ */
+export function remapConfig(cfg: TfJson, targetIds: Map<string, string>, sameJobRefs: Map<string, string>): TfJson {
+  const out: TfJson = { ...cfg };
+  for (const block of ['resource', 'data'] as const) {
+    if (!cfg[block]) continue;
+    out[block] = {};
+    for (const [type, labels] of Object.entries(cfg[block]!)) {
+      out[block]![type] = {};
+      for (const [label, attrs] of Object.entries(labels)) {
+        const self = `${type}.${label}`;
+        const map = new Map(targetIds);
+        for (const [id, addr] of sameJobRefs) {
+          if (addr !== self && !map.has(id)) map.set(id, `\${${addr}.id}`);
+        }
+        out[block]![type][label] = Object.fromEntries(
+          Object.entries(attrs ?? {}).map(([k, v]) => [k, FILE_ATTRIBUTES.has(k) ? v : remapIds(v, map)]),
+        );
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * GUID rimasti nella configurazione (potenziali riferimenti al sorgente non risolti).
+ * Percorsi e hash dei file sono esclusi: il nome del file contiene l'ID del sorgente senza essere un riferimento.
+ */
 export function remainingGuids(value: unknown): Set<string> {
   const out = new Set<string>();
-  JSON.stringify(value).replace(GUID_G, (g) => {
+  JSON.stringify(value, (k, v) => (FILE_ATTRIBUTES.has(k) ? undefined : v)).replace(GUID_G, (g) => {
     out.add(g.toLowerCase());
     return g;
   });

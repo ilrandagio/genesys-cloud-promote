@@ -13,7 +13,7 @@ import {
   ensureProvider,
   includeFilter,
   remainingGuids,
-  remapIds,
+  remapConfig,
   remapReferencedFiles,
   selectResources,
   type TfJson,
@@ -72,6 +72,7 @@ export async function runPortingJob(jobId: string) {
     const items: PortItem[] = job.items;
     const toPort = items.filter((i) => i.action === 'port');
     log.info(`Job ${job.mode}: ${job.sourceEnv.name} -> ${job.targetEnv.name}, ${toPort.length} oggetti da portare`);
+    if (job.mode === 'PLAN') log.info('SIMULAZIONE: nessuna modifica verrà applicata alle org');
 
     const srcCreds: TfCreds = {
       ...new GenesysClient(job.sourceEnv).credentials(),
@@ -105,7 +106,10 @@ export async function runPortingJob(jobId: string) {
       },
     };
     await writeFile(path.join(runnerDir, 'main.tf.json'), JSON.stringify(runner, null, 2));
-    log.info('Export dal sorgente (genesyscloud_tf_export)...');
+    log.info(
+      `Export da ${job.sourceEnv.name} (genesyscloud_tf_export): sola lettura, i file vengono scritti in locale. ` +
+        `"Apply complete" qui sotto si riferisce alla sola risorsa di export.`,
+    );
     await tfOrThrow(['init', '-no-color', '-input=false'], runnerDir, srcCreds, log.line);
     await tfOrThrow(['apply', '-no-color', '-auto-approve', '-input=false'], runnerDir, srcCreds, log.line);
 
@@ -134,9 +138,8 @@ export async function runPortingJob(jobId: string) {
     const missingDivisions = await mapDivisionsByName(job.sourceEnv, job.targetEnv, targetIds, log.info);
 
     // Configurazione Terraform: ID del target oppure riferimento alla risorsa creata nel job
-    const cfgMap = new Map(targetIds);
-    for (const [id, addr] of sameJobRefs) if (!cfgMap.has(id)) cfgMap.set(id, `\${${addr}.id}`);
-    cfg = remapIds(cfg, cfgMap);
+    // (mai la risorsa stessa, mai i percorsi dei file)
+    cfg = remapConfig(cfg, targetIds, sameJobRefs);
 
     // File esportati (JSON degli script, YAML dei flow): ID scritti in chiaro nel contenuto
     const fileReport = await remapReferencedFiles(cfg, exportDir, targetIds, sameJobRefs);
@@ -158,7 +161,8 @@ export async function runPortingJob(jobId: string) {
     }
 
     // Avviso su riferimenti al sorgente non risolti (dipendenze saltate e assenti sul target)
-    const sourceIds = new Set(items.map((i) => i.id.toLowerCase()));
+    // Solo oggetti non portati: quelli portati in questo job sono già collegati come riferimenti Terraform
+    const sourceIds = new Set(items.filter((i) => i.action !== 'port').map((i) => i.id.toLowerCase()));
     const unresolved = [...remainingGuids(cfg)].filter((g) => sourceIds.has(g));
     for (const g of unresolved) {
       const it = items.find((i) => i.id.toLowerCase() === g)!;
@@ -169,17 +173,21 @@ export async function runPortingJob(jobId: string) {
     await rm(path.join(exportDir, 'terraform.tfstate'), { force: true });
 
     // ---- 3. Import degli oggetti già presenti sul target ----
-    log.info('Inizializzazione sul target...');
+    log.info(`Preparazione per ${job.targetEnv.name}: inizializzazione Terraform (locale)`);
     await tfOrThrow(['init', '-no-color', '-input=false'], exportDir, tgtCreds, log.line);
     for (const [it, addr] of addresses) {
       if (it.targetId) {
-        log.info(`Import di ${addr} (esiste già sul target: ${it.targetId})`);
+        log.info(
+          `Import di ${addr} nello state locale (esiste già sul target: ${it.targetId}). ` +
+            `Sola lettura: serve perché il piano proponga un aggiornamento e non una creazione.`,
+        );
         await tfOrThrow(['import', '-no-color', '-input=false', addr, it.targetId], exportDir, tgtCreds, log.line);
       }
     }
 
     // ---- 4. Plan o apply ----
     if (job.mode === 'PLAN') {
+      log.info(`Piano delle modifiche su ${job.targetEnv.name} (nessuna modifica applicata)`);
       const plan = await tfOrThrow(['plan', '-no-color', '-input=false'], exportDir, tgtCreds, log.line);
       await setJob({ planOutput: plan.output });
     } else {
@@ -187,7 +195,7 @@ export async function runPortingJob(jobId: string) {
       const nonFlow = [...addresses.values()].filter((a) => !a.startsWith(flowType + '.'));
       const hasFlows = nonFlow.length < addresses.size;
       if (hasFlows && nonFlow.length) {
-        log.info('Fase 1: oggetti non-flow');
+        log.info(`Fase 1: oggetti non-flow — scrittura su ${job.targetEnv.name}`);
         await tfOrThrow(
           ['apply', '-no-color', '-auto-approve', '-input=false', ...nonFlow.map((a) => `-target=${a}`)],
           exportDir,
@@ -195,7 +203,7 @@ export async function runPortingJob(jobId: string) {
           log.line,
         );
       }
-      log.info(hasFlows ? 'Fase 2: flow' : 'Apply');
+      log.info(hasFlows ? `Fase 2: flow — scrittura su ${job.targetEnv.name}` : `Scrittura su ${job.targetEnv.name}`);
       let res = await terraform(['apply', '-no-color', '-auto-approve', '-input=false'], exportDir, tgtCreds, log.line);
       if (res.code !== 0 && hasFlows) {
         // I flow possono dipendere tra loro (es. common module): un secondo giro risolve l'ordine

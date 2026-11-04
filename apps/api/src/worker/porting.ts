@@ -92,7 +92,9 @@ export async function runPortingJob(jobId: string) {
       resource: {
         genesyscloud_tf_export: {
           export: {
-            directory: exportDir,
+            // Percorso relativo con "/": su Windows un percorso assoluto (c:\\...) viene scambiato
+            // dal provider per un URL ("unsupported protocol scheme c") quando scarica script e prompt
+            directory: path.relative(runnerDir, exportDir).split(path.sep).join('/'),
             export_format: 'json',
             include_state_file: false,
             enable_dependency_resolution: false,

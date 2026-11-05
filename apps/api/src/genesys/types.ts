@@ -149,6 +149,13 @@ export interface SourceSettings {
   emailAll?: EmailAddress[];
   /** Numero in uscita (Queue: Calling Party Number; Campaign: Caller Address) */
   phone?: { source?: string; target?: string; required: boolean };
+  /** Valori attuali dell'oggetto sul target, se esiste già: proposti come scelta */
+  targetCurrent?: {
+    site?: NamedRef;
+    edgeGroup?: NamedRef;
+    emailDefault?: EmailAddress;
+    emailAll?: EmailAddress[];
+  };
 }
 
 /** Valori del target scelti dall'utente */

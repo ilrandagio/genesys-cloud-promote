@@ -103,6 +103,8 @@ export interface SourceSettings {
   emailDefault?: EmailAddress;
   emailAll?: EmailAddress[];
   phone?: { source?: string; target?: string; required: boolean };
+  /** Valori attuali dell'oggetto sul target, se esiste già */
+  targetCurrent?: { site?: NamedRef; edgeGroup?: NamedRef; emailDefault?: EmailAddress; emailAll?: EmailAddress[] };
 }
 
 /** Valori del target scelti per una Campaign o una Queue */
@@ -118,6 +120,8 @@ export interface TargetOptions {
   sites: NamedRef[];
   edgeGroups: NamedRef[];
   emailAddresses: EmailAddress[];
+  /** Elenchi del target non leggibili (es. permessi mancanti) */
+  errors: string[];
 }
 
 export interface PortItem {

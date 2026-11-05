@@ -11,22 +11,44 @@ const byLocalPart = (list: EmailAddress[], a?: EmailAddress) => {
   return hits.length === 1 ? { domainId: hits[0].domainId, routeId: hits[0].routeId } : undefined;
 };
 
-/**
- * Proposta iniziale: Site ed Edge Group con lo stesso nome, indirizzi email con la stessa parte prima della @,
- * numero in uscita del target se l'oggetto esiste già sul target (altrimenti da inserire a mano)
- */
-export function proposeSettings(s: SourceSettings, o: TargetOptions): TargetSettings {
+/** Valori del target per un oggetto: gli elenchi del target più i valori attuali dell'oggetto sul target */
+export function optionsFor(s: SourceSettings, o: TargetOptions): TargetOptions {
+  const add = <T,>(list: T[], extra: (T | undefined)[], same: (a: T, b: T) => boolean) => [
+    ...list,
+    ...extra.filter((x): x is T => !!x && !list.some((y) => same(x, y))),
+  ];
+  const c = s.targetCurrent ?? {};
   return {
-    siteId: byName(o.sites, s.site),
-    edgeGroupId: byName(o.edgeGroups, s.edgeGroup),
-    emailDefault: byLocalPart(o.emailAddresses, s.emailDefault),
-    emailAll: s.emailAll?.map((a) => byLocalPart(o.emailAddresses, a)).filter((a): a is NonNullable<typeof a> => !!a),
+    ...o,
+    sites: add(o.sites, [c.site], (a, b) => a.id === b.id),
+    edgeGroups: add(o.edgeGroups, [c.edgeGroup], (a, b) => a.id === b.id),
+    emailAddresses: add(o.emailAddresses, [c.emailDefault, ...(c.emailAll ?? [])], (a, b) => a.routeId === b.routeId),
+  };
+}
+
+const pairOf = (a?: EmailAddress) => (a ? { domainId: a.domainId, routeId: a.routeId } : undefined);
+
+/**
+ * Proposta iniziale: se l'oggetto esiste già sul target, i suoi valori attuali; altrimenti Site ed Edge Group
+ * con lo stesso nome, indirizzi email con la stessa parte prima della @; numero del target o da inserire a mano
+ */
+export function proposeSettings(s: SourceSettings, options: TargetOptions): TargetSettings {
+  const o = optionsFor(s, options);
+  const c = s.targetCurrent ?? {};
+  return {
+    siteId: c.site?.id ?? byName(o.sites, s.site),
+    edgeGroupId: c.edgeGroup?.id ?? byName(o.edgeGroups, s.edgeGroup),
+    emailDefault: pairOf(c.emailDefault) ?? byLocalPart(o.emailAddresses, s.emailDefault),
+    emailAll: c.emailAll?.length
+      ? c.emailAll.map((a) => pairOf(a)!)
+      : s.emailAll?.map((a) => byLocalPart(o.emailAddresses, a)).filter((a): a is NonNullable<typeof a> => !!a),
     phone: s.phone?.target ?? '',
   };
 }
 
 /** true se le scelte puntano tutte a valori presenti sul target attuale */
-export function settingsValid(c: TargetSettings, o: TargetOptions) {
+export function settingsValid(c: TargetSettings, s: SourceSettings, options: TargetOptions) {
+  const o = optionsFor(s, options);
   const route = (a: { routeId: string }) => o.emailAddresses.some((x) => x.routeId === a.routeId);
   return (
     (!c.siteId || o.sites.some((x) => x.id === c.siteId)) &&
@@ -56,11 +78,19 @@ interface Props {
 }
 
 /** Scelta dei valori del target per Site, Edge Group, indirizzi email e numero in uscita */
-export default function TargetSettingsEditor({ settings: s, options: o, loading, value, onChange }: Props) {
+export default function TargetSettingsEditor({ settings: s, options, loading, value, onChange }: Props) {
+  const o = options ? optionsFor(s, options) : undefined;
   const set = (patch: TargetSettings) => onChange({ ...value, ...patch });
   const width = 240;
-  const picker = (label: string, source: NamedRef, list: NamedRef[] | undefined, v: string | undefined, f: (id: string) => void) => (
-    <Tooltip title={`Sul sorgente: ${source.name}`}>
+  const picker = (
+    label: string,
+    source: NamedRef,
+    current: NamedRef | undefined,
+    list: NamedRef[] | undefined,
+    v: string | undefined,
+    f: (id: string) => void,
+  ) => (
+    <Tooltip title={`Sul sorgente: ${source.name}${current ? `. Attuale sul target: ${current.name}` : ''}`}>
       <Select
         size="small"
         style={{ width }}
@@ -83,10 +113,18 @@ export default function TargetSettingsEditor({ settings: s, options: o, loading,
 
   return (
     <Space direction="vertical" size={4}>
-      {s.site && picker('Site', s.site, o?.sites, value.siteId, (id) => set({ siteId: id }))}
-      {s.edgeGroup && picker('Edge Group', s.edgeGroup, o?.edgeGroups, value.edgeGroupId, (id) => set({ edgeGroupId: id }))}
+      {s.site && picker('Site', s.site, s.targetCurrent?.site, o?.sites, value.siteId, (id) => set({ siteId: id }))}
+      {s.edgeGroup &&
+        picker('Edge Group', s.edgeGroup, s.targetCurrent?.edgeGroup, o?.edgeGroups, value.edgeGroupId, (id) =>
+          set({ edgeGroupId: id }),
+        )}
       {s.emailDefault && (
-        <Tooltip title={`Indirizzo email in uscita sul sorgente: ${s.emailDefault.address}`}>
+        <Tooltip
+          title={
+            `Indirizzo email in uscita sul sorgente: ${s.emailDefault.address}` +
+            (s.targetCurrent?.emailDefault ? `. Attuale sul target: ${s.targetCurrent.emailDefault.address}` : '')
+          }
+        >
           <Select
             size="small"
             style={{ width }}

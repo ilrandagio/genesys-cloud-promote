@@ -207,8 +207,21 @@ export default function PortingPage() {
     const next = new Map(targetSettings);
     for (const [key, n] of settingsNodes) {
       const current = next.get(key);
-      if (current && settingsValid(current, data)) continue;
-      next.set(key, proposeSettings(n.settings!, data));
+      const proposed = proposeSettings(n.settings!, data);
+      // Scelte valide: si completano solo i campi ancora vuoti (il numero vuoto può essere voluto e resta)
+      const merged: TargetSettings =
+        current && settingsValid(current, n.settings!, data)
+          ? {
+              ...current,
+              siteId: current.siteId ?? proposed.siteId,
+              edgeGroupId: current.edgeGroupId ?? proposed.edgeGroupId,
+              emailDefault: current.emailDefault ?? proposed.emailDefault,
+              emailAll: current.emailAll?.length ? current.emailAll : proposed.emailAll,
+              phone: current.phone ?? proposed.phone,
+            }
+          : proposed;
+      if (JSON.stringify(merged) === JSON.stringify(current)) continue;
+      next.set(key, merged);
       changed = true;
     }
     if (changed) setTargetSettings(next);
@@ -542,6 +555,17 @@ export default function PortingPage() {
               <Tag color="orange">Sovrascritture: {counts.overwrite}</Tag>
               <Tag>Oggetti distinti: {items.length}</Tag>
             </Space>
+            {!!targetValues.data?.errors.length && (
+              <Alert
+                type="warning"
+                showIcon
+                message="Alcuni valori del target non sono leggibili con il client OAuth del target"
+                description={targetValues.data.errors.join(' · ')}
+              />
+            )}
+            {targetValues.isError && (
+              <Alert type="error" showIcon message={`Valori del target non disponibili: ${(targetValues.error as Error).message}`} />
+            )}
             {counts.missingSkipped > 0 && (
               <Alert
                 type="warning"

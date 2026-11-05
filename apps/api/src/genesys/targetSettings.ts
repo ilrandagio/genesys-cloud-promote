@@ -41,6 +41,10 @@ async function sourceSettings(
   const src = await source.get(path(n.id));
   const tgt = n.target?.id ? await target.get(path(n.target.id)).catch(() => undefined) : undefined;
   const out: SourceSettings = {};
+  const emailList = async (client: Reader, list?: any[]) =>
+    list?.length
+      ? (await Promise.all(list.map((a) => emailAddress(client, a)))).filter((a): a is EmailAddress => !!a)
+      : undefined;
 
   if (n.type === 'campaign') {
     out.site = ref(src.site);
@@ -53,15 +57,28 @@ async function sourceSettings(
     out.site = ref(callback?.site);
     out.edgeGroup = ref(callback?.edgeGroup);
     out.emailDefault = await emailAddress(source, src.outboundEmailAddress);
-    const all = src.mediaSettings?.email?.allOutboundEmailAddresses as any[] | undefined;
-    if (all?.length) {
-      out.emailAll = (await Promise.all(all.map((a) => emailAddress(source, a)))).filter((a): a is EmailAddress => !!a);
-    }
+    out.emailAll = await emailList(source, src.mediaSettings?.email?.allOutboundEmailAddresses);
     if (src.callingPartyNumber || tgt?.callingPartyNumber) {
       out.phone = { source: src.callingPartyNumber, target: tgt?.callingPartyNumber, required: false };
     }
   }
-  return Object.values(out).some((v) => v !== undefined) ? out : undefined;
+  if (!Object.values(out).some((v) => v !== undefined)) return undefined;
+
+  // Oggetto già presente sul target: i suoi valori attuali sono la proposta di partenza
+  if (tgt) {
+    const holder = n.type === 'campaign' ? tgt : tgt.mediaSettings?.callback;
+    out.targetCurrent = {
+      site: ref(holder?.site),
+      edgeGroup: ref(holder?.edgeGroup),
+      ...(n.type === 'queue'
+        ? {
+            emailDefault: await emailAddress(target, tgt.outboundEmailAddress),
+            emailAll: await emailList(target, tgt.mediaSettings?.email?.allOutboundEmailAddresses),
+          }
+        : {}),
+    };
+  }
+  return out;
 }
 
 /** Aggiunge ai nodi Campaign e Queue le impostazioni da scegliere sul target */
@@ -85,22 +102,31 @@ export async function annotateSettings(source: Reader, target: Reader, trees: De
   }
 }
 
-/** Valori disponibili sul target: Sites, Edge Groups e indirizzi email (Email Routes) */
+/** Valori disponibili sul target: Sites, Edge Groups e indirizzi email (Email Routes); errors = elenchi non leggibili */
 export async function targetOptions(target: Reader) {
+  const errors: string[] = [];
+  const safe = async <T>(what: string, f: () => Promise<T[]>): Promise<T[]> => {
+    try {
+      return await f();
+    } catch (e) {
+      errors.push(`${what}: ${(e as Error).message}`);
+      return [];
+    }
+  };
   const named = (list: any[]): NamedRef[] =>
     list.map((o) => ({ id: o.id, name: o.name })).sort((a, b) => a.name.localeCompare(b.name));
   const [sites, edgeGroups, domains] = await Promise.all([
-    target.listAll('/api/v2/telephony/providers/edges/sites'),
-    target.listAll('/api/v2/telephony/providers/edges/edgegroups'),
-    target.listAll('/api/v2/routing/email/domains').catch(() => []),
+    safe('Sites', () => target.listAll('/api/v2/telephony/providers/edges/sites')),
+    safe('Edge Groups', () => target.listAll('/api/v2/telephony/providers/edges/edgegroups')),
+    safe('Email domains', () => target.listAll('/api/v2/routing/email/domains')),
   ]);
   const emailAddresses: EmailAddress[] = [];
-  for (const d of domains) {
-    const routes = await target
-      .listAll(`/api/v2/routing/email/domains/${encodeURIComponent(d.id)}/routes`)
-      .catch(() => [] as any[]);
-    for (const r of routes) emailAddresses.push({ domainId: d.id, routeId: r.id, address: `${r.pattern}@${d.id}` });
+  for (const d of domains as any[]) {
+    const routes = await safe(`Email Routes di ${d.id}`, () =>
+      target.listAll(`/api/v2/routing/email/domains/${encodeURIComponent(d.id)}/routes`),
+    );
+    for (const r of routes as any[]) emailAddresses.push({ domainId: d.id, routeId: r.id, address: `${r.pattern}@${d.id}` });
   }
   emailAddresses.sort((a, b) => a.address.localeCompare(b.address));
-  return { sites: named(sites), edgeGroups: named(edgeGroups), emailAddresses };
+  return { sites: named(sites), edgeGroups: named(edgeGroups), emailAddresses, errors };
 }

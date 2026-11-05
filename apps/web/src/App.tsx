@@ -1,8 +1,8 @@
 import { CloudServerOutlined, HistoryOutlined, LogoutOutlined, SwapOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Layout, Menu, Space, Spin, Typography } from 'antd';
+import { Button, Layout, Menu, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { api } from './api/client';
+import { api, type Me } from './api/client';
 import EnvironmentsPage from './pages/Environments';
 import JobDetailPage from './pages/JobDetail';
 import JobsPage from './pages/Jobs';
@@ -15,7 +15,7 @@ export default function App() {
   const location = useLocation();
   const me = useQuery({
     queryKey: ['me'],
-    queryFn: () => api<{ username: string; name: string; org: string }>('/api/auth/me'),
+    queryFn: () => api<Me>('/api/auth/me'),
   });
 
   if (me.isLoading) return <Spin fullscreen />;
@@ -51,6 +51,13 @@ export default function App() {
           <Typography.Text style={{ color: '#ccc' }} title={me.data?.username}>
             {me.data?.name}
           </Typography.Text>
+          <Tooltip title="Permessi letti al login dai ruoli Genesys: per aggiornarli esci e rientra">
+            <Space size={2}>
+              {me.data?.canApply && <Tag color="red">esegue</Tag>}
+              {me.data?.canApprove && <Tag color="purple">approva</Tag>}
+              {!me.data?.canApply && !me.data?.canApprove && <Tag>solo simulazione</Tag>}
+            </Space>
+          </Tooltip>
           <Button icon={<LogoutOutlined />} onClick={logout}>
             Esci
           </Button>

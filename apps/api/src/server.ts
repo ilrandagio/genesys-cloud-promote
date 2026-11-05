@@ -1,11 +1,12 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
-import { inArray, sql } from 'drizzle-orm';
 import Fastify from 'fastify';
 import { ZodError } from 'zod';
 import { config, inProcessWorker } from './config.js';
-import { db, migrateDb, schema, usingPglite } from './lib/db.js';
+import { closeDb, migrateDb, usingPglite } from './lib/db.js';
+import { localQueueIdle } from './lib/queue.js';
+import { failInterruptedJobs, purgeStaleArtifacts } from './lib/maintenance.js';
 import { authRoutes, COOKIE } from './routes/auth.js';
 import { environmentRoutes } from './routes/environments.js';
 import { jobRoutes } from './routes/jobs.js';
@@ -14,13 +15,10 @@ import { objectRoutes } from './routes/objects.js';
 // Migrazioni DB all'avvio (cartella drizzle/ generata con `npm run db:generate`)
 await migrateDb();
 
-if (inProcessWorker) {
-  // I job in corso al riavvio non possono essere ripresi: la coda interna vive nel processo
-  await db
-    .update(schema.jobs)
-    .set({ status: 'FAILED', finishedAt: new Date(), log: sql`${schema.jobs.log} || '[porting] Interrotto dal riavvio dell''applicazione\n'` })
-    .where(inArray(schema.jobs.status, ['QUEUED', 'RUNNING']));
-}
+// Job rimasti a metà: con la coda interna nessun job sopravvive al riavvio dell'applicazione
+if (inProcessWorker) await failInterruptedJobs(['QUEUED', 'RUNNING']);
+await purgeStaleArtifacts();
+setInterval(() => void purgeStaleArtifacts().catch(() => {}), 3600_000).unref();
 
 const app = Fastify({ logger: true });
 
@@ -48,3 +46,30 @@ app.log.info(
   `Database: ${usingPglite ? `integrato (PGlite) in ${config.DATA_DIR}` : 'PostgreSQL'} · ` +
     `Job: ${inProcessWorker ? 'eseguiti in questo processo' : 'worker separato via Redis'}`,
 );
+if (usingPglite) {
+  app.log.warn(
+    'Database integrato (PGlite): adatto per provare l\'applicazione. Per plan, approvazioni e storico che devono durare ' +
+      'usare PostgreSQL (DATABASE_URL): una chiusura brusca del processo può danneggiare il database integrato.',
+  );
+}
+
+/**
+ * Chiusura ordinata (Ctrl+C, stop del servizio): niente nuove richieste, attesa del job in corso
+ * (interrompere una scrittura sul target lascerebbe un rilascio a metà), chiusura del database.
+ */
+let closing = false;
+async function shutdown(signal: string) {
+  if (closing) return;
+  closing = true;
+  app.log.info(`${signal}: chiusura ordinata in corso`);
+  await app.close();
+  if (inProcessWorker) {
+    app.log.info('Attendo la fine dell\'eventuale job in corso...');
+    await localQueueIdle();
+  }
+  await closeDb();
+  app.log.info('Chiusura completata');
+  process.exit(0);
+}
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));

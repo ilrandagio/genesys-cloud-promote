@@ -9,7 +9,8 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
    (OAuth Authorization Code + PKCE), con accesso eventualmente limitato a un ruolo Genesys o a un elenco di email.
 2. **Ambienti**: ogni org Genesys Cloud è registrata con la propria regione e il proprio OAuth client
    (Client Credentials). Il secret è salvato cifrato (AES-256-GCM) e non viene mai restituito dalle API.
-   Un ambiente può essere marcato "solo sorgente" (es. produzione in sola lettura).
+   Un ambiente può essere marcato "solo sorgente" (es. produzione in sola lettura) o "protetto"
+   (i plan verso di esso richiedono l'approvazione di una seconda persona).
 3. **Porting**:
    - scelta di sorgente e target;
    - elenco degli oggetti del sorgente per tipo (flow, code, skill, wrap-up code, language, data action,
@@ -18,9 +19,13 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
      *Mancante*, *Presente uguale*, *Presente diverso* (con l'elenco dei campi diversi), *Presente*
      (esiste, contenuto non confrontato: i flow);
    - per ogni oggetto si sceglie **Porta** (crea o sovrascrive), **Usa quella del target** oppure **Salta**;
-   - **Simula (plan)** mostra il `terraform plan` sul target senza scrivere nulla;
-   - **Esegui porting** applica le modifiche.
-4. **Storico**: tutti i job con utente, ambienti, oggetti, azioni, log e output del plan (audit).
+   - **Simula (plan)** calcola e salva il piano delle modifiche sul target senza scrivere nulla;
+     la selezione resta disponibile e il plan si apre in un pannello laterale;
+   - **Approva** (sui target protetti, da una persona diversa da chi ha creato il plan);
+   - **Esegui il plan** applica esattamente il piano salvato, una sola volta, dopo aver verificato che il target
+     non sia cambiato.
+4. **Storico**: simulazioni ed esecuzioni con stato del plan, modifiche, chi ha simulato, approvato ed eseguito,
+   risorse scritte, log e output (audit).
 
 ## Architettura
 
@@ -53,17 +58,48 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
     variabili, azioni) e l'ID dello script stesso non sono dipendenze e non vengono mai sostituiti.
   - Il match sul target è **per nome** (per i flow anche per tipo). Il confronto ignora ID, date,
     versioni e GUID, così i riferimenti contano per contenuto e non per ID.
-- **Porting** delegato a CX as Code (provider `mypurecloud/genesyscloud`):
+- **Porting** delegato a CX as Code (provider `mypurecloud/genesyscloud`), sempre in due tempi:
+  **simulazione (plan)** e poi **esecuzione di quel plan**. Non esiste un'esecuzione diretta.
+
+  *Simulazione*
   1. `genesyscloud_tf_export` sul sorgente, solo per gli oggetti con azione *Porta*
      (`enable_dependency_resolution = false`: le dipendenze le decide l'utente);
   2. gli ID delle dipendenze *Usa quella del target* vengono rimappati sorgente → target nella configurazione esportata;
   3. gli ID scritti in chiaro nei file esportati (JSON degli script, YAML dei flow) vengono sostituiti
      con gli ID del target; per gli oggetti creati nello stesso porting si usa un segnaposto `{{gcp_N}}`
-     riempito da Terraform tramite `substitutions`, così l'ordine di creazione è garantito;
-  4. gli oggetti già presenti sul target vengono importati nello state (`terraform import`): sono aggiornati, non duplicati;
-  5. `plan` oppure `apply` in due fasi (prima gli oggetti non-flow, poi i flow, con un secondo tentativo
-     per le dipendenze tra flow).
-  La cartella di lavoro (che può contenere secret) viene cancellata a fine job.
+     riempito da Terraform tramite `substitutions`;
+  4. l'ordine di creazione viene dall'albero delle dipendenze (`depends_on`): prima ciò che è usato, poi chi lo usa;
+     un ciclo emerge già qui, non durante l'esecuzione;
+  5. gli oggetti già presenti sul target vengono importati nello state (`terraform import`): sono aggiornati, non duplicati;
+  6. `terraform plan -out`: il piano viene salvato. Cartella di lavoro completa (configurazione, file, state, piano,
+     lock dei provider) e identità del target vengono salvate **cifrate nel database** insieme al plan.
+     Un piano con cancellazioni o ricreazioni viene **bloccato** (ricreare un oggetto ne cambia l'ID).
+
+  *Esecuzione del plan*
+  1. il plan viene "consumato" in modo atomico: si esegue **una sola volta** (un indice univoco sul database lo garantisce
+     anche con richieste simultanee); deve essere completato, non bloccato, non scaduto e, sui target protetti, approvato;
+  2. il worker ricontrolla tutto, ricrea la cartella del plan e verifica che il target sia ancora lo stesso ambiente;
+  3. **controllo di deriva**: il piano viene ricalcolato sul target e confrontato con quello salvato; se il target è cambiato
+     dopo la simulazione non viene applicato nulla e va rifatta la simulazione;
+  4. `terraform apply <piano salvato>`: viene applicato esattamente ciò che è stato simulato, senza riesportare dal sorgente;
+  5. l'esito riporta le risorse effettivamente scritte (anche in caso di errore a metà); l'artefatto viene cancellato.
+
+  Le cartelle di lavoro temporanee vengono cancellate a fine job; gli artefatti dei plan scaduti o eseguiti vengono
+  eliminati automaticamente.
+
+## Autorizzazioni e approvazione (4 occhi)
+
+| Azione | Chi può farla |
+|---|---|
+| Analisi e simulazione | qualunque utente autenticato |
+| Esecuzione di un plan | utenti con `GENESYS_APPLY_ROLE` o in `APP_APPLY_EMAILS` (se entrambi vuoti: tutti) |
+| Approvazione | utenti con `GENESYS_APPROVER_ROLE` o in `APP_APPROVER_EMAILS` (se entrambi vuoti: tutti), **mai chi ha creato il plan** |
+
+- Un ambiente con **Richiede approvazione** (pagina Ambienti, consigliato per la produzione) accetta solo plan approvati.
+- I permessi sono letti dai ruoli Genesys al login: dopo una modifica dei ruoli serve uscire e rientrare.
+- Un plan vale `PLAN_TTL_HOURS` ore (predefinito 24); può essere scartato da chi l'ha creato o da un approvatore.
+- Lo storico registra chi ha simulato, chi ha approvato, chi ha eseguito e quali risorse sono state scritte.
+- Un job interrotto da un riavvio viene chiuso come fallito e non viene mai ripreso in automatico.
 
 ## Login con Genesys Cloud
 
@@ -108,6 +144,12 @@ npm run dev                              # avvia API e interfaccia insieme
 ```
 
 Aprire http://localhost:5173 e premere **Accedi con Genesys Cloud**. Prima serve il client OAuth di login (vedi sopra).
+
+**Database.** Senza `DATABASE_URL` l'app usa un PostgreSQL integrato (PGlite) nella cartella `data/`: comodo per provare,
+ma una chiusura brusca del processo può danneggiarlo (l'app chiude in modo ordinato con Ctrl+C, ma non se il processo
+viene terminato forzatamente). **Per plan, approvazioni e storico che devono durare usare PostgreSQL**: su Windows si
+installa gratuitamente senza Docker (installer ufficiale) e basta impostare
+`DATABASE_URL=postgres://utente:password@localhost:5432/gcpromote` nel `.env`.
 
 In questa modalità (nessun `DATABASE_URL` / `REDIS_URL` nel `.env`):
 - il database è PostgreSQL integrato (PGlite), salvato nella cartella `data/`;

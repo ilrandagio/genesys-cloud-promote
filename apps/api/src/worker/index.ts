@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { config } from '../config.js';
+import { failInterruptedJobs } from '../lib/maintenance.js';
 import { QUEUE_NAME } from '../lib/queue.js';
 import { runPortingJob } from './porting.js';
 
@@ -8,6 +9,9 @@ if (!config.REDIS_URL) {
   console.log('REDIS_URL non impostato: i job vengono eseguiti dall\'API (modalità locale), il worker separato non serve.');
   process.exit(0);
 }
+
+// Worker unico (concurrency 1): un job RUNNING al suo avvio è stato interrotto da un riavvio
+await failInterruptedJobs(['RUNNING']);
 
 /** Un job alla volta: evita apply concorrenti sullo stesso target */
 const worker = new Worker<{ jobId: string }>(

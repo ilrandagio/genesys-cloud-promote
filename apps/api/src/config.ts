@@ -40,6 +40,17 @@ const schema = z.object({
   /// Facoltativo: elenco di email ammesse, separate da virgola
   APP_ALLOWED_EMAILS: z.preprocess(empty, z.string().optional()),
 
+  // ---- Autorizzazioni sul rilascio ----
+  /// Chi può ESEGUIRE un plan: ruolo Genesys e/o email. Se entrambi vuoti: qualunque utente autenticato
+  GENESYS_APPLY_ROLE: z.preprocess(empty, z.string().optional()),
+  APP_APPLY_EMAILS: z.preprocess(empty, z.string().optional()),
+  /// Chi può APPROVARE i plan verso ambienti protetti: ruolo Genesys e/o email.
+  /// Se entrambi vuoti: qualunque utente autenticato diverso da chi ha creato il plan
+  GENESYS_APPROVER_ROLE: z.preprocess(empty, z.string().optional()),
+  APP_APPROVER_EMAILS: z.preprocess(empty, z.string().optional()),
+  /// Validità di un plan: oltre questo tempo va rifatto
+  PLAN_TTL_HOURS: z.coerce.number().positive().default(24),
+
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   /// Cartella di lavoro per gli export Terraform
   WORK_DIR: z.string().default(path.join(tmpdir(), 'gc-promote')),

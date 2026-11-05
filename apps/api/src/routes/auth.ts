@@ -30,7 +30,27 @@ export interface SessionUser {
   sub: string; // email
   name: string;
   genesysUserId: string;
+  /** Può eseguire plan (scrivere sul target) */
+  canApply: boolean;
+  /** Può approvare plan verso ambienti protetti */
+  canApprove: boolean;
 }
+
+const emailList = (v?: string) => new Set((v ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean));
+const applyEmails = emailList(config.APP_APPLY_EMAILS);
+const approverEmails = emailList(config.APP_APPROVER_EMAILS);
+
+/**
+ * Permesso concesso se l'utente ha il ruolo O è nell'elenco email.
+ * Se non è configurato né ruolo né elenco, il permesso è aperto a tutti gli utenti autenticati.
+ */
+function grants(role: string | undefined, emails: Set<string>, userRoles: string[], email: string): boolean {
+  if (!role && emails.size === 0) return true;
+  return (!!role && userRoles.includes(role.toLowerCase())) || emails.has(email);
+}
+
+/** Utente della sessione corrente (dopo requireAuth) */
+export const sessionUser = (req: FastifyRequest) => req.user as SessionUser;
 
 const b64url = (buf: Buffer) => buf.toString('base64url');
 
@@ -109,10 +129,10 @@ export async function authRoutes(app: FastifyInstance) {
     const { access_token } = (await tokenRes.json()) as { access_token: string };
 
     // Chi è l'utente (con i ruoli, se serve il controllo)
-    const meRes = await fetch(
-      `${apiBase}/api/v2/users/me${config.GENESYS_LOGIN_REQUIRED_ROLE ? '?expand=authorization' : ''}`,
-      { headers: { Authorization: `Bearer ${access_token}` } },
-    );
+    // Ruoli sempre letti: servono per accesso, esecuzione e approvazione
+    const meRes = await fetch(`${apiBase}/api/v2/users/me?expand=authorization`, {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
     if (!meRes.ok) return fail(reply, `Impossibile leggere il profilo Genesys (${meRes.status})`);
     const me = (await meRes.json()) as {
       id: string;
@@ -126,14 +146,19 @@ export async function authRoutes(app: FastifyInstance) {
     if (allowedEmails && !allowedEmails.has(email)) {
       return fail(reply, `L'utente ${email} non è abilitato a questa applicazione`);
     }
-    if (config.GENESYS_LOGIN_REQUIRED_ROLE) {
-      const roles = (me.authorization?.roles ?? []).map((r) => r.name.toLowerCase());
-      if (!roles.includes(config.GENESYS_LOGIN_REQUIRED_ROLE.toLowerCase())) {
-        return fail(reply, `Serve il ruolo Genesys "${config.GENESYS_LOGIN_REQUIRED_ROLE}" per usare questa applicazione`);
-      }
+    const roles = (me.authorization?.roles ?? []).map((r) => r.name.toLowerCase());
+    if (config.GENESYS_LOGIN_REQUIRED_ROLE && !roles.includes(config.GENESYS_LOGIN_REQUIRED_ROLE.toLowerCase())) {
+      return fail(reply, `Serve il ruolo Genesys "${config.GENESYS_LOGIN_REQUIRED_ROLE}" per usare questa applicazione`);
     }
 
-    const user: SessionUser = { sub: email, name: me.name, genesysUserId: me.id };
+    const user: SessionUser = {
+      sub: email,
+      name: me.name,
+      genesysUserId: me.id,
+      canApply: grants(config.GENESYS_APPLY_ROLE, applyEmails, roles, email),
+      canApprove: grants(config.GENESYS_APPROVER_ROLE, approverEmails, roles, email),
+    };
+    req.log.info({ user: email, canApply: user.canApply, canApprove: user.canApprove }, 'Login');
     const token = app.jwt.sign(user, { expiresIn: `${SESSION_HOURS}h` });
     return reply
       .setCookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge: SESSION_HOURS * 3600 })
@@ -146,6 +171,13 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.get('/api/auth/me', { preHandler: requireAuth }, async (req) => {
     const u = req.user as SessionUser;
-    return { username: u.sub, name: u.name, org: config.GENESYS_LOGIN_REGION };
+    return {
+      username: u.sub,
+      name: u.name,
+      org: config.GENESYS_LOGIN_REGION,
+      // Sessioni create prima dell'introduzione dei permessi: nessun permesso finché non si rifà il login
+      canApply: u.canApply === true,
+      canApprove: u.canApprove === true,
+    };
   });
 }

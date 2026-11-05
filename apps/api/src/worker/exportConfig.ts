@@ -200,3 +200,27 @@ export async function remapReferencedFiles(
   }
   return { report, missingFiles };
 }
+
+/**
+ * Ordine di creazione dall'albero delle dipendenze: per ogni arco "from usa to" in cui entrambi gli oggetti
+ * vengono portati in questo job, la risorsa di "from" dipende da quella di "to" (depends_on).
+ * Serve soprattutto per i flow, che referenziano gli oggetti per nome e quindi non hanno riferimenti Terraform:
+ * senza, Terraform potrebbe creare un flow prima della coda o della data action che usa.
+ * Un ciclo emerge già nel plan (errore "Cycle"), mai durante l'esecuzione.
+ */
+export function addDependsOn(cfg: TfJson, edges: { from: string; to: string }[], keyToAddress: Map<string, string>): number {
+  let added = 0;
+  for (const { from, to } of edges) {
+    const fromAddr = keyToAddress.get(from.toLowerCase());
+    const toAddr = keyToAddress.get(to.toLowerCase());
+    if (!fromAddr || !toAddr || fromAddr === toAddr) continue;
+    const [type, label] = fromAddr.split('.');
+    const attrs = cfg.resource?.[type]?.[label];
+    if (!attrs) continue;
+    const current: string[] = Array.isArray(attrs.depends_on) ? attrs.depends_on : [];
+    if (current.includes(toAddr)) continue;
+    attrs.depends_on = [...current, toAddr];
+    added++;
+  }
+  return added;
+}

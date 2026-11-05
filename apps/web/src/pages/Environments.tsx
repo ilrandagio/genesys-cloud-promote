@@ -51,7 +51,7 @@ export default function EnvironmentsPage() {
     setEditing(env);
     form.resetFields();
     if (env !== 'new') form.setFieldsValue(env);
-    else form.setFieldsValue({ allowAsTarget: true });
+    else form.setFieldsValue({ allowAsTarget: true, requireApproval: false });
   };
 
   return (
@@ -75,7 +75,12 @@ export default function EnvironmentsPage() {
           {
             title: 'Uso',
             dataIndex: 'allowAsTarget',
-            render: (v: boolean) => (v ? <Tag color="green">sorgente e target</Tag> : <Tag>solo sorgente</Tag>),
+            render: (v: boolean, env) => (
+              <Space size={4}>
+                {v ? <Tag color="green">sorgente e target</Tag> : <Tag>solo sorgente</Tag>}
+                {env.requireApproval && <Tag color="purple">protetto: approvazione richiesta</Tag>}
+              </Space>
+            ),
           },
           {
             title: '',
@@ -130,6 +135,14 @@ export default function EnvironmentsPage() {
             <Input.Password autoComplete="new-password" />
           </Form.Item>
           <Form.Item name="allowAsTarget" label="Utilizzabile come target" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="requireApproval"
+            label="Richiede approvazione (4 occhi)"
+            valuePropName="checked"
+            extra="I plan verso questo ambiente devono essere approvati da una persona diversa da chi li ha creati prima di poter essere eseguiti. Consigliato per gli ambienti di produzione."
+          >
             <Switch />
           </Form.Item>
         </Form>

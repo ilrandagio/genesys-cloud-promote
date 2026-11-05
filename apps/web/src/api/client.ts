@@ -28,6 +28,16 @@ export interface Environment {
   region: string;
   clientId: string;
   allowAsTarget: boolean;
+  /** Ambiente protetto: i plan richiedono l'approvazione di una seconda persona */
+  requireApproval: boolean;
+}
+
+export interface Me {
+  username: string;
+  name: string;
+  org: string;
+  canApply: boolean;
+  canApprove: boolean;
 }
 
 export interface GcObject {
@@ -66,6 +76,24 @@ export interface PortItem {
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
 
+export interface PlanSummary {
+  add: number;
+  change: number;
+  destroy: number;
+  replace: number;
+  changes: { address: string; actions: string[] }[];
+}
+
+export type PlanStateName = 'running' | 'failed' | 'blocked' | 'applied' | 'expired' | 'awaiting_approval' | 'ready';
+
+/** Stato del plan e azioni consentite all'utente corrente (calcolati dal server) */
+export interface PlanState {
+  state: PlanStateName;
+  canApprove: boolean;
+  canApply: boolean;
+  reasons: string[];
+}
+
 export interface JobSummary {
   id: string;
   mode: 'PLAN' | 'APPLY';
@@ -75,12 +103,22 @@ export interface JobSummary {
   finishedAt?: string;
   sourceName: string;
   targetName: string;
+  targetRequireApproval: boolean;
+  planSummary?: PlanSummary | null;
+  blockedReason?: string | null;
+  expiresAt?: string | null;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  appliedJobId?: string | null;
+  planJobId?: string | null;
+  appliedResources?: string[] | null;
+  plan?: PlanState;
 }
 
 export interface JobDetail extends JobSummary {
   items: PortItem[];
   log: string;
-  planOutput?: string;
+  planOutput?: string | null;
 }
 
 export class ApiError extends Error {

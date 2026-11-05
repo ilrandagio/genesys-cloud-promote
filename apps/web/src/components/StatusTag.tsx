@@ -83,3 +83,22 @@ export function typeLabel(o: { type: string; subtype?: string }): string {
   if (o.type !== 'flow' || !o.subtype) return base;
   return `${base} (${flowTypeLabel(o.subtype)})`;
 }
+
+const PLAN_STATE: Record<string, { color: string; label: string; help: string }> = {
+  running: { color: 'processing', label: 'In corso', help: 'La simulazione è in esecuzione' },
+  failed: { color: 'error', label: 'Fallita', help: 'La simulazione non è riuscita' },
+  blocked: { color: 'error', label: 'Non eseguibile', help: 'Il piano contiene modifiche non ammesse o nessuna modifica' },
+  applied: { color: 'default', label: 'Già usato', help: 'Il plan è stato usato per un’esecuzione (si esegue una sola volta): l’esito è nell’esecuzione collegata' },
+  expired: { color: 'default', label: 'Scaduto', help: 'Il plan è scaduto o è stato scartato: rifare la simulazione' },
+  awaiting_approval: { color: 'purple', label: 'Da approvare', help: 'Il target è protetto: serve l’approvazione di una seconda persona' },
+  ready: { color: 'success', label: 'Pronto', help: 'Il plan può essere eseguito' },
+};
+
+export function PlanStateTag({ state }: { state: string }) {
+  const s = PLAN_STATE[state] ?? { color: 'default', label: state, help: '' };
+  return (
+    <Tooltip title={s.help}>
+      <Tag color={s.color}>{s.label}</Tag>
+    </Tooltip>
+  );
+}

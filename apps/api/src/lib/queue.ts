@@ -23,3 +23,8 @@ export async function enqueuePorting(jobId: string): Promise<void> {
   const { runPortingJob } = await import('../worker/porting.js');
   localChain = localChain.then(() => runPortingJob(jobId)).catch((e) => console.error(`Job ${jobId} fallito`, e));
 }
+
+/** Attende la fine del job in corso nella coda interna (per una chiusura ordinata) */
+export function localQueueIdle(): Promise<void> {
+  return localChain;
+}

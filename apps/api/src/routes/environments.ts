@@ -15,6 +15,8 @@ const envInput = z.object({
   clientId: z.string().min(1),
   clientSecret: z.string().optional(),
   allowAsTarget: z.boolean().default(true),
+  /** Ambiente protetto: i plan verso questo target richiedono l'approvazione di una seconda persona */
+  requireApproval: z.boolean().default(false),
 });
 
 const t = schema.environments;
@@ -25,6 +27,7 @@ const publicFields = {
   region: t.region,
   clientId: t.clientId,
   allowAsTarget: t.allowAsTarget,
+  requireApproval: t.requireApproval,
   createdAt: t.createdAt,
 };
 
@@ -67,7 +70,14 @@ export async function environmentRoutes(app: FastifyInstance) {
     await ensureNameFree(name);
     const [row] = await db
       .insert(t)
-      .values({ name, region: body.region, clientId: body.clientId, clientSecretEncrypted, allowAsTarget: body.allowAsTarget })
+      .values({
+        name,
+        region: body.region,
+        clientId: body.clientId,
+        clientSecretEncrypted,
+        allowAsTarget: body.allowAsTarget,
+        requireApproval: body.requireApproval,
+      })
       .returning(publicFields);
     return row;
   });
@@ -88,6 +98,7 @@ export async function environmentRoutes(app: FastifyInstance) {
         clientId: body.clientId,
         clientSecretEncrypted,
         allowAsTarget: body.allowAsTarget,
+        requireApproval: body.requireApproval,
         updatedAt: new Date(),
       })
       .where(eq(t.id, id))

@@ -1,4 +1,4 @@
-import { ArrowRightOutlined, BranchesOutlined, CodeOutlined, ExclamationCircleFilled, ExperimentOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, BranchesOutlined, CodeOutlined, ExclamationCircleFilled, ExperimentOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -68,7 +68,7 @@ function defaultAction(n: DependencyNode, isRoot: boolean): PortAction {
 }
 
 export default function PortingPage() {
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const navigate = useNavigate();
 
   // Selezione, analisi e azioni restano salvate nella sessione: cambiare pagina o aprire il plan non le perde
@@ -162,6 +162,22 @@ export default function PortingPage() {
     return [...out.values()];
   }, [trees, actions]);
 
+  /** Archi dell'albero ("from" usa "to"): il server li usa per l'ordine di creazione (depends_on) */
+  const edges = useMemo(() => {
+    const out = new Map<string, { from: string; to: string }>();
+    const walk = (n: DependencyNode) => {
+      for (const c of n.children) {
+        if (n.supported && c.supported && !c.repeated) {
+          const e = { from: keyOf(n), to: keyOf(c) };
+          out.set(`${e.from}>${e.to}`, e);
+        }
+        if (!c.repeated) walk(c);
+      }
+    };
+    trees?.forEach(walk);
+    return [...out.values()];
+  }, [trees]);
+
   /** Impronta delle scelte correnti: se cambia dopo la simulazione, il plan non corrisponde più */
   const fingerprint = useMemo(
     () =>
@@ -201,46 +217,21 @@ export default function PortingPage() {
     return [...out];
   }, [trees]);
 
-  const submit = (mode: 'PLAN' | 'APPLY') => {
-    const run = async () => {
-      setSubmitting(true);
-      try {
-        const job = await api<{ id: string }>('/api/jobs', {
-          method: 'POST',
-          body: { sourceEnvId: sourceId, targetEnvId: targetId, mode, items },
-        });
-        if (mode === 'PLAN') {
-          // La simulazione si apre di lato: selezione e albero restano dove sono
-          setPlan({ jobId: job.id, fingerprint });
-          setPlanOpen(true);
-        } else {
-          navigate(`/jobs/${job.id}`);
-        }
-      } catch (e) {
-        message.error((e as Error).message);
-      } finally {
-        setSubmitting(false);
-      }
-    };
-    if (mode === 'PLAN') return run();
-    const target = envs.data?.find((e) => e.id === targetId)?.name;
-    modal.confirm({
-      title: `Eseguire il porting su ${target}?`,
-      content: (
-        <>
-          Verranno scritti <b>{counts.port}</b> oggetti sul target
-          {counts.overwrite > 0 && (
-            <>
-              , di cui <b>{counts.overwrite}</b> già esistenti che verranno <b>sovrascritti</b>
-            </>
-          )}
-          .
-        </>
-      ),
-      okText: 'Esegui porting',
-      okButtonProps: { danger: true },
-      onOk: run,
-    });
+  /** Simulazione: unica strada verso un rilascio (plan → eventuale approvazione → esecuzione del plan) */
+  const simulate = async () => {
+    setSubmitting(true);
+    try {
+      const job = await api<{ id: string }>('/api/jobs', {
+        method: 'POST',
+        body: { sourceEnvId: sourceId, targetEnvId: targetId, items, edges },
+      });
+      setPlan({ jobId: job.id, fingerprint });
+      setPlanOpen(true);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const envOptions = (envs.data ?? []).map((e) => ({ value: e.id, label: `${e.name} (${e.region})` }));
@@ -415,18 +406,8 @@ export default function PortingPage() {
                     <Tag color="orange">simulazione non più valida</Tag>
                   </Tooltip>
                 ))}
-              <Button icon={<ExperimentOutlined />} loading={submitting} disabled={!counts.port} onClick={() => submit('PLAN')}>
+              <Button type="primary" icon={<ExperimentOutlined />} loading={submitting} disabled={!counts.port} onClick={simulate}>
                 Simula (plan)
-              </Button>
-              <Button
-                type="primary"
-                danger
-                icon={<PlayCircleOutlined />}
-                loading={submitting}
-                disabled={!counts.port}
-                onClick={() => submit('APPLY')}
-              >
-                Esegui porting
               </Button>
             </Space>
           }
@@ -599,7 +580,7 @@ export default function PortingPage() {
               <Alert
                 type="warning"
                 showIcon
-                message="Le scelte sono cambiate dopo questa simulazione: il porting eseguito da qui userebbe le scelte della simulazione, non quelle attuali."
+                message="Le scelte sono cambiate dopo questa simulazione. Eseguendola si applicano le scelte della simulazione, non quelle attuali: per applicare quelle attuali rifai la simulazione."
               />
             )}
             <JobView compact id={plan.jobId} onApplied={(applyId) => navigate(`/jobs/${applyId}`)} />

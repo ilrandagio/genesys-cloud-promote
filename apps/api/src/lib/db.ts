@@ -36,8 +36,21 @@ const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url
 
 export async function migrateDb() {
   if (created.pglite) {
-    await migratePglite(drizzlePglite(created.pglite), { migrationsFolder });
+    try {
+      await migratePglite(drizzlePglite(created.pglite), { migrationsFolder });
+    } catch (e) {
+      throw new Error(
+        `Il database locale in ${path.join(config.DATA_DIR, 'pglite')} non si apre, probabilmente è danneggiato ` +
+          `(l'applicazione è stata chiusa in modo brusco). Spostare o cancellare la cartella per ripartire, ` +
+          `oppure usare PostgreSQL (DATABASE_URL) per dati che devono durare. Dettaglio: ${(e as Error).message}`,
+      );
+    }
   } else {
     await migratePg(db, { migrationsFolder });
   }
+}
+
+/** Chiusura ordinata: con PGlite è indispensabile per non lasciare il database su disco danneggiato */
+export async function closeDb() {
+  if (created.pglite) await created.pglite.close();
 }

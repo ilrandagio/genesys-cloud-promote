@@ -51,7 +51,17 @@ GENESYS_LOGIN_CLIENT_SECRET=${clientSecret}
 GENESYS_LOGIN_REQUIRED_ROLE=
 APP_ALLOWED_EMAILS=
 
-# Per usare PostgreSQL e Redis veri (come in Docker) valorizzare:
+# ---- Autorizzazioni sul rilascio ----
+# Chi può ESEGUIRE i plan (ruolo Genesys e/o email). Entrambi vuoti = tutti gli utenti
+GENESYS_APPLY_ROLE=
+APP_APPLY_EMAILS=
+# Chi può APPROVARE i plan verso ambienti protetti. Entrambi vuoti = tutti, tranne chi ha creato il plan
+GENESYS_APPROVER_ROLE=
+APP_APPROVER_EMAILS=
+PLAN_TTL_HOURS=24
+
+# PostgreSQL consigliato per plan, approvazioni e storico che devono durare (es. postgres://u:p@localhost:5432/gcpromote).
+# Vuoto = database integrato in data/ (solo per provare). REDIS_URL vuoto = coda interna.
 DATABASE_URL=
 REDIS_URL=
 

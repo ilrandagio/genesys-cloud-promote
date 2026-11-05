@@ -41,9 +41,19 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 ### Regole di sicurezza applicate automaticamente
 
 - **Campaigns e Campaign Sequences arrivano spente** sul target (`campaign_status`/`status` = `off`): si avviano a mano dopo il rilascio.
-- **Site ed Edge Group delle Campaigns si scelgono sul target**: dipendono dalla telefonia di ciascuna org e non si portano.
-  Nell'analisi, sulla riga di una Campaign da portare, si scelgono Site ed Edge Group del target (proposti per nome
-  uguale a quelli del sorgente); senza scelta la simulazione non parte. Il worker verifica che esistano sul target.
+- **Impostazioni legate all'org si scelgono sul target** (Campaigns e Queues). Nell'analisi, sulla riga dell'oggetto
+  da portare, si sceglie:
+  - **Site ed Edge Group** (Campaign; callback della Queue), proposti per nome uguale a quelli del sorgente;
+  - **indirizzo email in uscita** della Queue (dominio + Email Route) ed eventuale elenco completo degli indirizzi,
+    proposti per parte prima della `@` uguale a quella del sorgente (i domini di solito cambiano tra org);
+  - **numero in uscita** (Queue: Calling Party Number; Campaign: Caller Address): quello del target se l'oggetto esiste
+    già, altrimenti da inserire a mano. Obbligatorio per le Campaigns che lo avevano; per le Queues vuoto = nessun numero.
+
+  Senza le scelte obbligatorie la simulazione non parte; il worker verifica che i valori scelti esistano sul target.
+- **Membri delle Queues mai portati né toccati**: non vengono esportati (`members`, Groups, Teams, Skill Groups).
+  Sul target la Queue ha `ignore_members = true`, quindi i membri presenti restano; Groups, Teams e Skill Groups sono
+  quelli del target se la Queue esiste già, nessuno se è nuova. Gli indirizzi di messaggistica in uscita (SMS, WhatsApp,
+  Open Messaging) sono quelli del target se la Queue esiste già, altrimenti nessuno.
 - **Le Contact Lists si portano senza contatti**: viene creata la struttura (colonne, numeri, Attempt Limit), i dati non escono dal sorgente.
 - **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
   testo delle Responses vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,
@@ -156,7 +166,7 @@ Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
   Wrap-up Codes, Languages), Integrations (Integrations e Data Actions), Outbound (Campaigns, Contact Lists, Rule Sets, ecc.),
   Web Deployments (Messenger Configurations e Deployments), Response Management (Libraries, Responses, Assets), più quanto richiesto da `tf_export`.
 - **Target**: gli stessi permessi in lettura più la scrittura sugli stessi oggetti (add/edit/publish dei flow),
-  e la lettura di Telephony (Sites, Edge Groups) per scegliere quelli delle Campaigns.
+  e la lettura di Telephony (Sites, Edge Groups) e Routing Email (domini ed Email Routes) per le scelte sul target.
 
 Il pulsante *Prova connessione* nella pagina Ambienti verifica le credenziali.
 

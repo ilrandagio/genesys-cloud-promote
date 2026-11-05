@@ -237,43 +237,158 @@ export async function buildWrapupMappings(
 }
 
 /**
- * Campaign: Site ed Edge Group dipendono dalla telefonia di ciascuna org e non si portano. Si usano quelli
- * del target scelti dall'utente nell'analisi; ogni scelta viene verificata sul target. Se la Campaign del
- * sorgente usa un Site o un Edge Group e sul target non è stato scelto, la simulazione si ferma.
+ * Campaigns e Queues: le impostazioni legate alla singola org non si portano, si usano quelle del target
+ * scelte dall'utente nell'analisi (ogni scelta viene verificata sul target):
+ * - Site ed Edge Group (Campaign; callback della Queue);
+ * - indirizzi email in uscita della Queue (dominio + Email Route), predefinito ed elenco completo;
+ * - numero in uscita (Campaign: caller_address, obbligatorio se c'era sul sorgente; Queue: calling_party_number,
+ *   facoltativo: se vuoto viene tolto).
+ * Se sul sorgente un valore c'è e sul target non è stato scelto, la simulazione si ferma con l'elenco.
  */
-export async function applyCampaignTelephony(
+export async function applyTargetSettings(
   cfg: TfJson,
   addresses: Map<PortItem, string>,
   target: Reader,
   log: Log,
 ) {
-  const tfType = CATALOG.campaign.tfType;
   const missing: string[] = [];
+  const verify = async (what: string, path: string, it: PortItem) => {
+    try {
+      return await target.get<any>(path);
+    } catch {
+      throw new Error(`${what} scelto per ${CATALOG[it.type].label} "${it.name}" non trovato sul target`);
+    }
+  };
+  const site = (id: string, it: PortItem) => verify('Site', `/api/v2/telephony/providers/edges/sites/${encodeURIComponent(id)}`, it);
+  const edgeGroup = (id: string, it: PortItem) =>
+    verify('Edge Group', `/api/v2/telephony/providers/edges/edgegroups/${encodeURIComponent(id)}`, it);
+  const route = (a: { domainId: string; routeId: string }, it: PortItem) =>
+    verify(
+      'Indirizzo email',
+      `/api/v2/routing/email/domains/${encodeURIComponent(a.domainId)}/routes/${encodeURIComponent(a.routeId)}`,
+      it,
+    );
+
   for (const [it, addr] of addresses) {
-    if (it.type !== 'campaign') continue;
+    if (it.type !== 'campaign' && it.type !== 'queue') continue;
+    const tfType = CATALOG[it.type].tfType;
     const attrs = cfg.resource?.[tfType]?.[addr.slice(tfType.length + 1)];
     if (!attrs) continue;
-    const fields = [
-      { attr: 'site_id', chosen: it.targetSiteId, label: 'Site', path: '/api/v2/telephony/providers/edges/sites/{id}' },
-      { attr: 'edge_group_id', chosen: it.targetEdgeGroupId, label: 'Edge Group', path: '/api/v2/telephony/providers/edges/edgegroups/{id}' },
-    ];
-    for (const f of fields) {
-      if (!attrs[f.attr]) continue;
-      if (!f.chosen) {
-        missing.push(`${f.label} della Campaign "${it.name}"`);
-        continue;
+    const chosen = it.targetSettings ?? {};
+    const what = `${CATALOG[it.type].label} "${it.name}"`;
+
+    // Site ed Edge Group: sulla Campaign, oppure nelle impostazioni di callback della Queue
+    const holder = it.type === 'campaign' ? attrs : attrs.media_settings_callback?.[0];
+    if (holder?.site_id) {
+      if (!chosen.siteId) missing.push(`Site di ${what}`);
+      else {
+        holder.site_id = chosen.siteId;
+        log(`${what}: Site del target "${(await site(chosen.siteId, it)).name}"`);
       }
-      let name: string;
-      try {
-        name = (await target.get<{ name: string }>(f.path.replace('{id}', encodeURIComponent(f.chosen)))).name;
-      } catch {
-        throw new Error(`${f.label} scelto per la Campaign "${it.name}" non trovato sul target (${f.chosen})`);
+    }
+    if (holder?.edge_group_id) {
+      if (!chosen.edgeGroupId) missing.push(`Edge Group di ${what}`);
+      else {
+        holder.edge_group_id = chosen.edgeGroupId;
+        log(`${what}: Edge Group del target "${(await edgeGroup(chosen.edgeGroupId, it)).name}"`);
       }
-      attrs[f.attr] = f.chosen;
-      log(`Campaign "${it.name}": ${f.label} del target "${name}"`);
+    }
+
+    if (it.type === 'campaign') {
+      if (attrs.caller_address) {
+        if (!chosen.phone?.trim()) missing.push(`numero in uscita (Caller Address) di ${what}`);
+        else {
+          attrs.caller_address = chosen.phone.trim();
+          log(`${what}: Caller Address ${attrs.caller_address}`);
+        }
+      }
+      continue;
+    }
+
+    // Queue: indirizzi email in uscita
+    const pair = (a: { domainId: string; routeId: string }) => ({ domain_id: a.domainId, route_id: a.routeId });
+    if (attrs.outbound_email_address?.length) {
+      if (!chosen.emailDefault) missing.push(`indirizzo email in uscita di ${what}`);
+      else {
+        const r = await route(chosen.emailDefault, it);
+        attrs.outbound_email_address = [pair(chosen.emailDefault)];
+        log(`${what}: indirizzo email in uscita ${r.pattern}@${chosen.emailDefault.domainId}`);
+      }
+    }
+    if (attrs.all_outbound_email_addresses?.length) {
+      const list = [...(chosen.emailAll ?? [])];
+      // L'indirizzo predefinito deve far parte dell'elenco completo
+      if (chosen.emailDefault && !list.some((a) => a.routeId === chosen.emailDefault!.routeId)) list.unshift(chosen.emailDefault);
+      if (!list.length) missing.push(`indirizzi email in uscita di ${what}`);
+      else {
+        for (const a of list) await route(a, it);
+        attrs.all_outbound_email_addresses = list.map(pair);
+        log(`${what}: ${list.length} indirizzi email in uscita del target`);
+      }
+    }
+
+    // Queue: numero in uscita, facoltativo
+    const phone = chosen.phone?.trim();
+    if (phone) {
+      attrs.calling_party_number = phone;
+      log(`${what}: Calling Party Number ${phone}`);
+    } else if (attrs.calling_party_number) {
+      delete attrs.calling_party_number;
+      log(`${what}: Calling Party Number non impostato sul target`);
     }
   }
   if (missing.length) {
-    throw new Error(`Scegliere sul target: ${missing.join(', ')}. Si sceglie nell'analisi, sulla riga della Campaign.`);
+    throw new Error(`Scegliere sul target: ${missing.join(', ')}. Si sceglie nell'analisi, sulla riga dell'oggetto.`);
+  }
+}
+
+/**
+ * Queue: i membri non si portano e quelli del target non si toccano.
+ * - members non esportati; ignore_members = true, così il provider non legge né modifica i membri del target;
+ * - Groups, Teams e Skill Groups (membri tramite gruppo): il provider li riscrive sempre, quindi per una Queue
+ *   già presente si usano quelli del target, per una Queue nuova nessuno;
+ * - indirizzi di messaggistica in uscita (SMS, WhatsApp, Open Messaging): ID dell'org, quelli del target se la
+ *   Queue esiste già, altrimenti nessuno.
+ */
+export async function applyQueueMembership(
+  cfg: TfJson,
+  addresses: Map<PortItem, string>,
+  target: Reader,
+  log: Log,
+) {
+  const tfType = CATALOG.queue.tfType;
+  const MESSAGING: Record<string, string> = {
+    outbound_messaging_sms_address_id: 'smsAddress',
+    outbound_messaging_whatsapp_recipient_id: 'whatsAppRecipient',
+    outbound_messaging_open_messaging_recipient_id: 'openMessagingRecipient',
+  };
+  const GROUPS: Record<string, string> = { groups: 'GROUP', teams: 'TEAM', skill_groups: 'SKILLGROUP' };
+  for (const [it, addr] of addresses) {
+    if (it.type !== 'queue') continue;
+    const attrs = cfg.resource?.[tfType]?.[addr.slice(tfType.length + 1)];
+    if (!attrs) continue;
+    delete attrs.members;
+    attrs.ignore_members = true;
+    const current = it.targetId
+      ? await target.get<any>(`/api/v2/routing/queues/${encodeURIComponent(it.targetId)}`)
+      : undefined;
+
+    for (const [attr, type] of Object.entries(GROUPS)) {
+      const ids = ((current?.memberGroups ?? []) as any[]).filter((g) => g.type === type).map((g) => g.id);
+      if (ids.length) attrs[attr] = ids;
+      else delete attrs[attr];
+    }
+    for (const [attr, field] of Object.entries(MESSAGING)) {
+      const id = current?.outboundMessagingAddresses?.[field]?.id;
+      if (id) attrs[attr] = id;
+      else if (attrs[attr]) {
+        delete attrs[attr];
+        log(`Queue "${it.name}": ${attr} del sorgente non portato (ID dell'org sorgente)`);
+      }
+    }
+    log(
+      `Queue "${it.name}": membri non portati` +
+        (current ? ', membri e gruppi del target mantenuti' : ', nessun membro sulla nuova Queue'),
+    );
   }
 }

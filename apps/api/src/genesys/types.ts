@@ -122,8 +122,11 @@ export interface DependencyNode extends GcObjectRef {
   division?: DivisionRef;
   /** Problema di lettura (es. permessi mancanti): il nodo è mostrato ma le sue dipendenze o lo stato sul target sono incompleti */
   error?: string;
-  /** Solo Campaign: Site ed Edge Group usati sul sorgente, da sostituire con quelli scelti sul target */
-  telephony?: CampaignTelephony;
+  /**
+   * Solo Campaign e Queue: impostazioni legate alla singola org (Site, Edge Group, indirizzi email,
+   * numero in uscita) da sostituire con quelle scelte sul target
+   */
+  settings?: SourceSettings;
 }
 
 export interface NamedRef {
@@ -131,9 +134,30 @@ export interface NamedRef {
   name: string;
 }
 
-export interface CampaignTelephony {
+/** Indirizzo email di una Queue: dominio + Email Route */
+export interface EmailAddress {
+  domainId: string;
+  routeId: string;
+  address: string;
+}
+
+/** Impostazioni del sorgente che non si portano: si sceglie il valore del target */
+export interface SourceSettings {
   site?: NamedRef;
   edgeGroup?: NamedRef;
+  emailDefault?: EmailAddress;
+  emailAll?: EmailAddress[];
+  /** Numero in uscita (Queue: Calling Party Number; Campaign: Caller Address) */
+  phone?: { source?: string; target?: string; required: boolean };
+}
+
+/** Valori del target scelti dall'utente */
+export interface TargetSettings {
+  siteId?: string;
+  edgeGroupId?: string;
+  emailDefault?: { domainId: string; routeId: string };
+  emailAll?: { domainId: string; routeId: string }[];
+  phone?: string;
 }
 
 export type PortAction = 'port' | 'reuse' | 'skip';
@@ -143,7 +167,6 @@ export interface PortItem extends GcObjectRef {
   action: PortAction;
   targetStatus: TargetStatus;
   targetId?: string;
-  /** Solo Campaign portate: Site ed Edge Group del target scelti dall'utente */
-  targetSiteId?: string;
-  targetEdgeGroupId?: string;
+  /** Solo Campaign e Queue portate: valori del target scelti dall'utente */
+  targetSettings?: TargetSettings;
 }

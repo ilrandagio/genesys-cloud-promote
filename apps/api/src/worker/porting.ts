@@ -12,8 +12,9 @@ import { getEnvironment } from '../lib/repo.js';
 import { packArtifact, unpackArtifact } from './artifact.js';
 import {
   alignWebDeploymentVersions,
-  applyCampaignTelephony,
+  applyQueueMembership,
   applySafetyRules,
+  applyTargetSettings,
   buildWrapupMappings,
   rewriteAssetLinks,
 } from './transforms.js';
@@ -146,6 +147,18 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
             use_legacy_architect_flow_exporter: false,
             split_files_by_resource: false,
             include_filter_resources: toExport.map(includeFilter),
+            // Membri delle Queue mai esportati: sul target restano quelli presenti. Solo se si esportano Queue:
+            // il provider rifiuta l'esclusione di attributi di tipi non esportati
+            ...(toExport.some((i) => i.type === 'queue')
+              ? {
+                  exclude_attributes: [
+                    'genesyscloud_routing_queue.members',
+                    'genesyscloud_routing_queue.groups',
+                    'genesyscloud_routing_queue.teams',
+                    'genesyscloud_routing_queue.skill_groups',
+                  ],
+                }
+              : {}),
           },
         },
       },
@@ -201,8 +214,10 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // Configurazione: ID del target oppure riferimento alla risorsa creata nel job (mai sé stessa, mai i percorsi)
   cfg = remapConfig(cfg, targetIds, sameJobRefs);
 
-  // Campaign: Site ed Edge Group scelti sul target (mai quelli del sorgente)
-  await applyCampaignTelephony(cfg, addresses, targetClient, log.info);
+  // Campaigns e Queues: Site, Edge Group, email e numero scelti sul target (mai quelli del sorgente)
+  await applyTargetSettings(cfg, addresses, targetClient, log.info);
+  // Queues: membri mai portati, quelli del target mai toccati
+  await applyQueueMembership(cfg, addresses, targetClient, log.info);
 
   // Wrap-up code mappings: unione di sorgente e target, già con gli ID del target
   for (const it of singletons) {

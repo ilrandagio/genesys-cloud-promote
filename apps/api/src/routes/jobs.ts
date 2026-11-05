@@ -17,8 +17,15 @@ const itemSchema = z.object({
   action: z.enum(['port', 'reuse', 'skip']),
   targetStatus: z.enum(['missing', 'same', 'different', 'present']),
   targetId: z.string().optional(),
-  targetSiteId: z.string().optional(),
-  targetEdgeGroupId: z.string().optional(),
+  targetSettings: z
+    .object({
+      siteId: z.string().optional(),
+      edgeGroupId: z.string().optional(),
+      emailDefault: z.object({ domainId: z.string(), routeId: z.string() }).optional(),
+      emailAll: z.array(z.object({ domainId: z.string(), routeId: z.string() })).optional(),
+      phone: z.string().optional(),
+    })
+    .optional(),
 });
 
 const j = schema.jobs;

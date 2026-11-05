@@ -81,8 +81,8 @@ export interface DependencyNode {
   error?: string;
   division?: DivisionRef;
   target?: { status: TargetStatus; id?: string; diff?: string[]; division?: DivisionRef; divisionMissing?: boolean };
-  /** Solo Campaign: Site ed Edge Group usati sul sorgente */
-  telephony?: { site?: NamedRef; edgeGroup?: NamedRef };
+  /** Solo Campaign e Queue: impostazioni legate all'org, da scegliere sul target */
+  settings?: SourceSettings;
   children: DependencyNode[];
 }
 
@@ -91,10 +91,33 @@ export interface NamedRef {
   name: string;
 }
 
-/** Site ed Edge Group del target scelti per una Campaign */
-export interface TelephonyChoice {
+export interface EmailAddress {
+  domainId: string;
+  routeId: string;
+  address: string;
+}
+
+export interface SourceSettings {
+  site?: NamedRef;
+  edgeGroup?: NamedRef;
+  emailDefault?: EmailAddress;
+  emailAll?: EmailAddress[];
+  phone?: { source?: string; target?: string; required: boolean };
+}
+
+/** Valori del target scelti per una Campaign o una Queue */
+export interface TargetSettings {
   siteId?: string;
   edgeGroupId?: string;
+  emailDefault?: { domainId: string; routeId: string };
+  emailAll?: { domainId: string; routeId: string }[];
+  phone?: string;
+}
+
+export interface TargetOptions {
+  sites: NamedRef[];
+  edgeGroups: NamedRef[];
+  emailAddresses: EmailAddress[];
 }
 
 export interface PortItem {
@@ -105,8 +128,7 @@ export interface PortItem {
   action: PortAction;
   targetStatus: TargetStatus;
   targetId?: string;
-  targetSiteId?: string;
-  targetEdgeGroupId?: string;
+  targetSettings?: TargetSettings;
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';

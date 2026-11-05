@@ -29,7 +29,7 @@ import {
   type PortAction,
   type PortItem,
 } from '../api/client';
-import { TargetStatusTag, TYPE_LABELS } from '../components/StatusTag';
+import { flowTypeLabel, TargetStatusTag, typeLabel } from '../components/StatusTag';
 
 const keyOf = (o: { type: string; id: string }) => `${o.type}:${o.id}`;
 
@@ -331,7 +331,7 @@ export default function PortingPage() {
                     resetAnalysis();
                   }}
                 >
-                  {TYPE_LABELS[o.type]}: {o.name}
+                  {typeLabel(o)}: {o.name}
                 </Tag>
               ))}
             </div>
@@ -359,7 +359,7 @@ export default function PortingPage() {
               { title: 'Nome', dataIndex: 'name' },
               ...(type === 'flow'
                 ? [
-                    { title: 'Tipo flow', dataIndex: 'subtype' },
+                    { title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t) },
                     {
                       title: 'Pubblicato',
                       dataIndex: 'published',
@@ -479,8 +479,8 @@ export default function PortingPage() {
                 },
                 {
                   title: 'Tipo',
-                  render: (_, n) => (n.supported ? TYPE_LABELS[n.type] : <Tag>{n.rawType}</Tag>),
-                  width: 160,
+                  render: (_, n) => (n.supported ? typeLabel(n) : <Tag>{n.rawType}</Tag>),
+                  width: 220,
                 },
                 {
                   title: 'Divisione',

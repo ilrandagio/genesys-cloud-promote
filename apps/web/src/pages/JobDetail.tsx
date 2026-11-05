@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, Descriptions, Space, Table, Tabs, Tag } from 'antd';
 import { useParams } from 'react-router-dom';
 import { api, type JobDetail, type PortItem } from '../api/client';
-import { JobStatusTag, TargetStatusTag, TYPE_LABELS } from '../components/StatusTag';
+import { JobStatusTag, TargetStatusTag, typeLabel } from '../components/StatusTag';
 
 const ACTION_LABEL = { port: 'Porta', reuse: 'Usa target', skip: 'Salta' } as const;
 
@@ -53,7 +53,7 @@ export default function JobDetailPage() {
                   pagination={false}
                   columns={[
                     { title: 'Oggetto', dataIndex: 'name' },
-                    { title: 'Tipo', dataIndex: 'type', render: (t) => TYPE_LABELS[t] },
+                    { title: 'Tipo', render: (_, i) => typeLabel(i) },
                     { title: 'Stato target (all\'analisi)', dataIndex: 'targetStatus', render: (s) => <TargetStatusTag status={s} /> },
                     {
                       title: 'Azione',

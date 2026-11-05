@@ -46,3 +46,40 @@ export const TYPE_LABELS: Record<string, string> = {
   datatable: 'Data table',
   emergencygroup: 'Emergency group',
 };
+
+/** Tipi di flow Architect (campo "type" di /api/v2/flows) */
+const FLOW_TYPE_LABELS: Record<string, string> = {
+  INBOUNDCALL: 'Inbound Call',
+  INBOUNDCHAT: 'Inbound Chat',
+  INBOUNDEMAIL: 'Inbound Email',
+  INBOUNDSHORTMESSAGE: 'Inbound Message',
+  INQUEUECALL: 'In-Queue Call',
+  INQUEUEEMAIL: 'In-Queue Email',
+  INQUEUESHORTMESSAGE: 'In-Queue Message',
+  OUTBOUNDCALL: 'Outbound Call',
+  SECURECALL: 'Secure Call',
+  COMMONMODULE: 'Common Module',
+  WORKFLOW: 'Workflow',
+  WORKITEM: 'Workitem',
+  BOT: 'Bot',
+  DIGITALBOT: 'Digital Bot',
+  VOICE: 'Voice',
+  VOICEMAIL: 'Voicemail',
+  VOICESURVEY: 'Voice Survey',
+  SURVEYINVITE: 'Survey Invite',
+  SPEECH: 'Speech',
+};
+
+/** Tipo di flow leggibile, es. COMMONMODULE -> "Common Module" */
+export function flowTypeLabel(subtype?: string): string {
+  if (!subtype) return '';
+  const sub = subtype.toUpperCase();
+  return FLOW_TYPE_LABELS[sub] ?? sub;
+}
+
+/** Etichetta del tipo di oggetto; per i flow aggiunge il tipo di flow, es. "Flow (Common Module)" */
+export function typeLabel(o: { type: string; subtype?: string }): string {
+  const base = TYPE_LABELS[o.type] ?? o.type;
+  if (o.type !== 'flow' || !o.subtype) return base;
+  return `${base} (${flowTypeLabel(o.subtype)})`;
+}

@@ -638,14 +638,25 @@ export default function PortingPage() {
                           <ExclamationCircleFilled style={{ color: '#ff4d4f' }} />
                         </Tooltip>
                       )}
-                      {n.supported && (n.type === 'flow' || n.type === 'script') && (
-                        <Tooltip title="Configurazione letta da Genesys (dove l'analisi cerca i riferimenti)">
+                      {n.supported && (
+                        <Tooltip title="Dettaglio sul sorgente, come lo legge l'applicazione (dove l'analisi cerca i riferimenti)">
                           <a
                             href={`/api/environments/${sourceId}/objects/${n.type}/${encodeURIComponent(n.id)}/raw`}
                             target="_blank"
                             rel="noreferrer"
                           >
                             <CodeOutlined />
+                          </a>
+                        </Tooltip>
+                      )}
+                      {n.supported && n.target?.id && targetId && (
+                        <Tooltip title="Dettaglio dell'oggetto sul target">
+                          <a
+                            href={`/api/environments/${targetId}/objects/${n.type}/${encodeURIComponent(n.target.id)}/raw`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <CodeOutlined style={{ color: '#d46b08' }} />
                           </a>
                         </Tooltip>
                       )}

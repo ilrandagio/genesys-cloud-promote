@@ -90,7 +90,12 @@ export default function TargetSettingsEditor({ settings: s, options, loading, va
     v: string | undefined,
     f: (id: string) => void,
   ) => (
-    <Tooltip title={`Sul sorgente: ${source.name}${current ? `. Attuale sul target: ${current.name}` : ''}`}>
+    <Tooltip
+      title={
+        `Sul sorgente: ${source.name}. ` +
+        (s.targetCurrent ? `Attuale sul target: ${current?.name ?? 'nessuno'}.` : 'Oggetto non presente sul target.')
+      }
+    >
       <Select
         size="small"
         style={{ width }}
@@ -122,7 +127,10 @@ export default function TargetSettingsEditor({ settings: s, options, loading, va
         <Tooltip
           title={
             `Indirizzo email in uscita sul sorgente: ${s.emailDefault.address}` +
-            (s.targetCurrent?.emailDefault ? `. Attuale sul target: ${s.targetCurrent.emailDefault.address}` : '')
+            (s.targetCurrent
+              ? `. Attuale sul target: ${s.targetCurrent.emailDefault?.address ?? 'nessuno'}`
+              : '. Oggetto non presente sul target.') +
+            ` Indirizzi disponibili sul target: ${o?.emailAddresses.length ?? 0}.`
           }
         >
           <Select

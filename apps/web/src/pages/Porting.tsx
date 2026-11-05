@@ -85,13 +85,19 @@ function effectiveAction(n: DependencyNode, chosen: PortAction | undefined): Por
 
 const ACTION_LABELS: Record<PortAction, string> = { port: 'Porta', reuse: 'Usa quella del target', skip: 'Salta' };
 
-/** Albero filtrato per azione: restano i nodi con quell'azione e i loro antenati */
-function filterRows(rows: TreeRow[], keep: (r: TreeRow) => boolean): TreeRow[] {
-  return rows.flatMap((r) => {
-    const children = r.children ? filterRows(r.children, keep) : [];
-    if (!keep(r) && !children.length) return [];
-    return [{ ...r, children: children.length ? children : undefined }];
-  });
+/**
+ * Vista filtrata per azione: elenco piatto dei soli oggetti con quell'azione, una riga per oggetto
+ * (un oggetto può comparire in più rami dell'albero, ma l'azione è una sola)
+ */
+function flatRows(rows: TreeRow[], keep: (r: TreeRow) => boolean): TreeRow[] {
+  const out = new Map<string, TreeRow>();
+  const walk = (r: TreeRow) => {
+    const key = keyOf(r);
+    if (keep(r) && !out.has(key)) out.set(key, { ...r, isRoot: false, children: undefined });
+    r.children?.forEach(walk);
+  };
+  rows.forEach(walk);
+  return [...out.values()];
 }
 
 export default function PortingPage() {
@@ -577,7 +583,7 @@ export default function PortingPage() {
               dataSource={(() => {
                 const rows = trees.map((t) => toRows(t, '', true));
                 if (actionFilter === 'all') return rows;
-                return filterRows(
+                return flatRows(
                   rows,
                   (r) => r.supported && !r.repeated && !!r.target && effectiveAction(r as DependencyNode, actions.get(keyOf(r))) === actionFilter,
                 );

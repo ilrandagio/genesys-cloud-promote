@@ -17,7 +17,9 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
    - **analisi**: albero delle dipendenze di ogni oggetto, con lo stato sul target per ciascun nodo:
      *Mancante*, *Presente uguale*, *Presente diverso* (con l'elenco dei campi diversi), *Presente*
      (esiste, contenuto non confrontato: i flow);
-   - per ogni oggetto si sceglie **Porta** (crea o sovrascrive), **Usa quella del target** oppure **Salta**;
+   - per ogni oggetto si sceglie **Porta** (crea o sovrascrive) oppure, in alternativa, **Usa quella del target** se
+     l'oggetto esiste già sul target, **Salta** se manca (i riferimenti a quell'oggetto restano scoperti);
+     accanto a *Simula* un filtro mostra solo gli oggetti con una certa azione;
    - **Simula (plan)** calcola e salva il piano delle modifiche sul target senza scrivere nulla;
      la selezione resta disponibile e il plan si apre in un pannello laterale;
    - **Approva** (sui target protetti, da una persona diversa da chi ha creato il plan);

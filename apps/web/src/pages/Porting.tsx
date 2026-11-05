@@ -71,6 +71,29 @@ function defaultAction(n: DependencyNode, isRoot: boolean): PortAction {
   }
 }
 
+/**
+ * Azione effettiva di un nodo: "Usa quella del target" esiste solo se l'oggetto è sul target, "Salta" solo se
+ * manca (per un oggetto presente sul target le due scelte coincidono: i riferimenti puntano a quello del target)
+ */
+function effectiveAction(n: DependencyNode, chosen: PortAction | undefined): PortAction {
+  const a = chosen ?? 'skip';
+  const exists = !!n.target && n.target.status !== 'missing';
+  if (a === 'skip' && exists) return 'reuse';
+  if (a === 'reuse' && !exists) return 'skip';
+  return a;
+}
+
+const ACTION_LABELS: Record<PortAction, string> = { port: 'Porta', reuse: 'Usa quella del target', skip: 'Salta' };
+
+/** Albero filtrato per azione: restano i nodi con quell'azione e i loro antenati */
+function filterRows(rows: TreeRow[], keep: (r: TreeRow) => boolean): TreeRow[] {
+  return rows.flatMap((r) => {
+    const children = r.children ? filterRows(r.children, keep) : [];
+    if (!keep(r) && !children.length) return [];
+    return [{ ...r, children: children.length ? children : undefined }];
+  });
+}
+
 export default function PortingPage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
@@ -87,6 +110,7 @@ export default function PortingPage() {
   const [targetSettings, setTargetSettings] = useSessionState<Map<string, TargetSettings>>('targetSettings', new Map(), mapCodec());
   const [includeDivisions, setIncludeDivisions] = useSessionState('includeDivisions', false);
   const [onlySelected, setOnlySelected] = useSessionState('onlySelected', false);
+  const [actionFilter, setActionFilter] = useSessionState<PortAction | 'all'>('actionFilter', 'all');
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
   const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>('plan', undefined);
   const [planOpen, setPlanOpen] = useState(false);
@@ -194,7 +218,7 @@ export default function PortingPage() {
           id: n.id,
           name: n.name,
           subtype: n.subtype,
-          action: actions.get(keyOf(n)) ?? 'skip',
+          action: effectiveAction(n, actions.get(keyOf(n))),
           targetStatus: n.target.status,
           targetId: n.target.id,
           ...(n.settings ? { targetSettings: targetSettings.get(keyOf(n)) ?? {} } : {}),
@@ -478,6 +502,18 @@ export default function PortingPage() {
                     <Tag color="orange">simulazione non più valida</Tag>
                   </Tooltip>
                 ))}
+              <Select<PortAction | 'all'>
+                style={{ width: 260 }}
+                value={actionFilter}
+                onChange={setActionFilter}
+                options={[
+                  { value: 'all', label: `Mostra: tutti (${items.length})` },
+                  ...(['port', 'reuse', 'skip'] as const).map((a) => ({
+                    value: a,
+                    label: `Mostra: ${ACTION_LABELS[a]} (${items.filter((i) => i.action === a).length})`,
+                  })),
+                ]}
+              />
               <Tooltip
                 title={settingsMissing.length ? `Scegliere sul target: ${settingsMissing.join('; ')}` : undefined}
               >
@@ -536,7 +572,17 @@ export default function PortingPage() {
               size="small"
               rowKey="rowKey"
               pagination={false}
-              dataSource={trees.map((t) => toRows(t, '', true))}
+              // key: con un filtro diverso l'albero si riapre tutto espanso
+              key={actionFilter}
+              dataSource={(() => {
+                const rows = trees.map((t) => toRows(t, '', true));
+                if (actionFilter === 'all') return rows;
+                return filterRows(
+                  rows,
+                  (r) => r.supported && !r.repeated && !!r.target && effectiveAction(r as DependencyNode, actions.get(keyOf(r))) === actionFilter,
+                );
+              })()}
+              locale={{ emptyText: <Empty description={actionFilter === 'all' ? undefined : `Nessun oggetto con azione "${ACTION_LABELS[actionFilter]}"`} /> }}
               expandable={{ defaultExpandAllRows: true }}
               columns={[
                 {
@@ -632,16 +678,18 @@ export default function PortingPage() {
                       <Select<PortAction>
                         size="small"
                         style={{ width: 240 }}
-                        value={actions.get(keyOf(n))}
+                        value={effectiveAction(n as DependencyNode, actions.get(keyOf(n)))}
                         onChange={(v) => setActions(new Map(actions).set(keyOf(n), v))}
                         options={[
                           { value: 'port', label: exists ? 'Porta (sovrascrivi sul target)' : 'Porta' },
-                          ...(exists ? [{ value: 'reuse' as const, label: 'Usa quella del target' }] : []),
-                          { value: 'skip', label: 'Salta' },
+                          // Presente sul target: si usa quello; mancante: si salta (i riferimenti restano scoperti)
+                          exists
+                            ? { value: 'reuse' as const, label: ACTION_LABELS.reuse }
+                            : { value: 'skip' as const, label: `${ACTION_LABELS.skip} (non portare)` },
                         ]}
                       />
                     );
-                    if (!n.settings || actions.get(keyOf(n)) !== 'port') return action;
+                    if (!n.settings || effectiveAction(n as DependencyNode, actions.get(keyOf(n))) !== 'port') return action;
                     // Campaign e Queue: Site, Edge Group, email e numero si scelgono sul target
                     return (
                       <Space direction="vertical" size={4}>

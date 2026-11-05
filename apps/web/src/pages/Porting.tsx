@@ -86,6 +86,7 @@ export default function PortingPage() {
   const [actions, setActions] = useSessionState<Map<string, PortAction>>('actions', new Map(), mapCodec());
   const [targetSettings, setTargetSettings] = useSessionState<Map<string, TargetSettings>>('targetSettings', new Map(), mapCodec());
   const [includeDivisions, setIncludeDivisions] = useSessionState('includeDivisions', false);
+  const [onlySelected, setOnlySelected] = useSessionState('onlySelected', false);
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
   const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>('plan', undefined);
   const [planOpen, setPlanOpen] = useState(false);
@@ -103,9 +104,13 @@ export default function PortingPage() {
     enabled: !!sourceId,
   });
 
+  // "Solo selezionati": gli oggetti selezionati di tutti i tipi, altrimenti quelli del tipo corrente
   const filtered = useMemo(
-    () => (objects.data ?? []).filter((o) => o.name.toLowerCase().includes(search.toLowerCase())),
-    [objects.data, search],
+    () =>
+      (onlySelected ? [...selected.values()] : (objects.data ?? [])).filter((o) =>
+        o.name.toLowerCase().includes(search.toLowerCase()),
+      ),
+    [objects.data, search, onlySelected, selected],
   );
 
   const resetAnalysis = () => {
@@ -354,6 +359,12 @@ export default function PortingPage() {
                   <Typography.Text>Includi divisioni</Typography.Text>
                 </Space>
               </Tooltip>
+              <Tooltip title="Mostra nell'elenco solo gli oggetti selezionati, di tutti i tipi">
+                <Space size={6}>
+                  <Switch size="small" checked={onlySelected} onChange={setOnlySelected} />
+                  <Typography.Text>Solo selezionati</Typography.Text>
+                </Space>
+              </Tooltip>
               <Typography.Text>{selected.size} selezionati</Typography.Text>
               <Button
                 type="primary"
@@ -412,14 +423,21 @@ export default function PortingPage() {
             style={{ marginTop: 12 }}
             size="small"
             rowKey={(o) => keyOf(o)}
-            loading={objects.isLoading}
+            loading={!onlySelected && objects.isLoading}
             dataSource={filtered}
             pagination={{ pageSize: 15, showSizeChanger: false }}
-            locale={{ emptyText: objects.isError ? (objects.error as Error).message : <Empty /> }}
+            locale={{ emptyText: !onlySelected && objects.isError ? (objects.error as Error).message : <Empty /> }}
             rowSelection={{
               preserveSelectedRowKeys: true,
               selectedRowKeys: [...selected.keys()],
-              onChange: (_keys, rows) => {
+              onChange: (keys, rows) => {
+                // Solo selezionati: si può solo togliere dalla selezione
+                if (onlySelected) {
+                  const keep = new Set(keys.map(String));
+                  setSelected(new Map([...selected].filter(([k]) => keep.has(k))));
+                  resetAnalysis();
+                  return;
+                }
                 // Mantiene la selezione degli altri tipi e aggiorna solo quella del tipo corrente
                 const next = new Map([...selected].filter(([, o]) => o.type !== type));
                 rows.filter(Boolean).forEach((r) => next.set(keyOf(r), r));
@@ -429,7 +447,8 @@ export default function PortingPage() {
             }}
             columns={[
               { title: 'Nome', dataIndex: 'name' },
-              ...(type === 'flow'
+              ...(onlySelected ? [{ title: 'Tipo', key: 'type', render: (_: unknown, o: GcObject) => typeLabel(o) }] : []),
+              ...(!onlySelected && type === 'flow'
                 ? [
                     { title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t) },
                     {

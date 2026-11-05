@@ -224,3 +224,19 @@ export function addDependsOn(cfg: TfJson, edges: { from: string; to: string }[],
   }
   return added;
 }
+
+/**
+ * Risorse il cui file (filepath) non è stato esportato: il percorso è rimasto una variabile
+ * (es. "${var.genesyscloud_flow_X_filepath}") oppure è vuoto. Restituisce gli indirizzi Terraform.
+ */
+export function unexportedFiles(cfg: TfJson): string[] {
+  const out: string[] = [];
+  for (const [type, labels] of Object.entries(cfg.resource ?? {})) {
+    for (const [label, attrs] of Object.entries(labels)) {
+      if (!attrs || !('filepath' in attrs)) continue;
+      const fp = attrs.filepath;
+      if (typeof fp !== 'string' || !fp.trim() || fp.includes('${var.')) out.push(`${type}.${label}`);
+    }
+  }
+  return out;
+}

@@ -18,6 +18,7 @@ import {
   remapConfig,
   remapReferencedFiles,
   selectResources,
+  unexportedFiles,
   type TfJson,
 } from './exportConfig.js';
 import { terraform, tfOrThrow, type TfCreds } from './terraform.js';
@@ -122,6 +123,9 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
           export_format: 'json',
           include_state_file: false,
           enable_dependency_resolution: false,
+          // Il vecchio esportatore dei flow non scrive i file YAML: lascia il percorso come variabile da
+          // compilare a mano (var.genesyscloud_flow_..._filepath) e il plan fallisce con "empty file path"
+          use_legacy_architect_flow_exporter: false,
           split_files_by_resource: false,
           include_filter_resources: toPort.map(includeFilter),
         },
@@ -146,6 +150,15 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const missing = toPort.filter((i) => !addresses.has(i));
   if (missing.length) {
     throw new Error(`Oggetti non trovati nell'export: ${missing.map((m) => `${m.type} "${m.name}"`).join(', ')}`);
+  }
+
+  // Ogni file referenziato (YAML dei flow, JSON degli script) deve essere stato davvero esportato
+  const unexported = unexportedFiles(cfg);
+  if (unexported.length) {
+    throw new Error(
+      `File non esportati dal sorgente per: ${unexported.join(', ')}. ` +
+        `Il percorso è rimasto una variabile da compilare: l'oggetto non può essere portato con questo export.`,
+    );
   }
 
   // ID sorgente -> ID target: dipendenze riusate (o già presenti) e divisioni abbinate per nome

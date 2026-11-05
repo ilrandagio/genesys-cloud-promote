@@ -33,7 +33,8 @@ export type ObjectType =
   | 'supportedcontent'
   | 'responselibrary'
   | 'response'
-  | 'responseasset';
+  | 'responseasset'
+  | 'wrapupmapping';
 
 export interface DivisionRef {
   id?: string;

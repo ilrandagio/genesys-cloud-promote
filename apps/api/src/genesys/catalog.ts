@@ -9,9 +9,14 @@ export interface ListingClient {
 
 export type TypeGroup = 'Architect' | 'Routing' | 'Integrazioni' | 'Outbound' | 'Messaging' | 'Canned response' | 'Organizzazione';
 
+/** ID con cui il provider gestisce (e importa) i wrap-up code mappings */
+export const WRAPUP_MAPPINGS_ID = 'wrapupcodemappings';
+
 export interface TypeDef {
   label: string;
   group: TypeGroup;
+  /** Oggetto unico per org: non si esporta, la configurazione la costruisce il worker */
+  singleton?: boolean;
   /** Elenco personalizzato, per gli endpoint che non sono una lista paginata standard */
   list?: (client: ListingClient) => Promise<any[]>;
   /**
@@ -266,6 +271,26 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_telephony_providers_edges_edge_group',
     comparable: false,
     portable: false,
+  },
+
+  wrapupmapping: {
+    group: 'Outbound',
+    label: 'Wrap-up code mappings',
+    listPath: '/api/v2/outbound/wrapupcodemappings',
+    getPath: '/api/v2/outbound/wrapupcodemappings',
+    tfType: 'genesyscloud_outbound_wrapupcodemappings',
+    // Oggetto unico per org (singleton): un solo elemento con nome e ID fissi, uguali su ogni org
+    list: async (c) => {
+      try {
+        await c.get('/api/v2/outbound/wrapupcodemappings');
+        return [{ id: WRAPUP_MAPPINGS_ID, name: 'Wrap-up code mappings' }];
+      } catch {
+        return [];
+      }
+    },
+    // Il porting unisce sorgente e target: il confronto riga per riga lo fa il plan
+    comparable: false,
+    singleton: true,
   },
 
   // ---- Messaging ----

@@ -128,9 +128,14 @@ export default function PortingPage() {
         },
       });
       const acts = new Map<string, PortAction>();
-      const walk = (n: DependencyNode, root: boolean) => {
-        if (n.supported && !acts.has(keyOf(n))) acts.set(keyOf(n), defaultAction(n, root));
-        n.children.forEach((c) => walk(c, false));
+      const walk = (n: DependencyNode, root: boolean, parent?: DependencyNode) => {
+        if (n.supported && !acts.has(keyOf(n))) {
+          // I wrap-up code della mappatura outbound possono essere centinaia: quelli assenti sul target
+          // non si portano di default, la mappatura usa solo quelli già presenti
+          const fromMapping = parent?.type === 'wrapupmapping' && n.target?.status === 'missing';
+          acts.set(keyOf(n), fromMapping ? 'skip' : defaultAction(n, root));
+        }
+        n.children.forEach((c) => walk(c, false, n));
       };
       res.trees.forEach((t) => walk(t, true));
       setActions(acts);

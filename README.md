@@ -33,7 +33,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 | Architect | flow, schedule, schedule group, user prompt, script agente, data table, emergency group |
 | Routing | code, skill, wrap-up code, language |
 | Integrazioni | integrazioni, data action |
-| Outbound | campagne voce, campagne messaging, sequenze, liste contatti (call list), filtri, liste DNC, call analysis response set, rule set, digital rule set, regole di campagna, attempt limit, callable time set, file specification template |
+| Outbound | campagne voce, campagne messaging, sequenze, liste contatti (call list), filtri, liste DNC, call analysis response set, rule set, digital rule set, regole di campagna, attempt limit, callable time set, file specification template, wrap-up code mappings |
 | Messaging | Messenger configuration, Messenger deployment, supported content profile |
 | Canned response | librerie, risposte, asset (immagini e file) |
 | Organizzazione | divisioni; siti ed edge group **solo associati** per nome |
@@ -48,6 +48,10 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   testo delle risposte vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,
   se viene caricato nello stesso rilascio si usa il riferimento Terraform `content_location` (valorizzato dopo il caricamento,
   che quindi avviene prima della risposta).
+- **Wrap-up code mappings** (oggetto unico per org): non si sovrascrivono, si **uniscono**. Si parte dalla mappatura del
+  target e si applicano i flag dei wrap-up code del sorgente presenti sul target (o portati nello stesso rilascio);
+  le associazioni che esistono solo sul target restano, il set di default resta quello del target. Nell'analisi i
+  wrap-up code della mappatura assenti sul target sono proposti come *Salta*.
 - **Messenger deployment**: punta alla versione della configuration creata nello stesso rilascio oppure all'ultima versione
   pubblicata della configuration già presente sul target.
 

@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { GenesysClient, PermissionError } from '../genesys/client.js';
-import { CATALOG } from '../genesys/catalog.js';
+import { CATALOG, WRAPUP_MAPPINGS_ID } from '../genesys/catalog.js';
 import { awsRegion } from '../genesys/regions.js';
 import type { PortItem } from '../genesys/types.js';
 import { and, eq, sql } from 'drizzle-orm';
@@ -10,7 +10,7 @@ import { db, schema } from '../lib/db.js';
 import type { Environment } from '../lib/schema.js';
 import { getEnvironment } from '../lib/repo.js';
 import { packArtifact, unpackArtifact } from './artifact.js';
-import { alignWebDeploymentVersions, applySafetyRules, rewriteAssetLinks } from './transforms.js';
+import { alignWebDeploymentVersions, applySafetyRules, buildWrapupMappings, rewriteAssetLinks } from './transforms.js';
 import { appliedFromOutput, blockReason, comparableChanges, describeDrift, summarize, type PlanJson } from './planJson.js';
 import {
   addDependsOn,
@@ -103,6 +103,9 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const exportDir = path.join(workDir, 'export');
   const items: PortItem[] = job.items;
   const toPort = items.filter((i) => i.action === 'port');
+  // Gli oggetti unici per org (wrap-up code mappings) non si esportano: la configurazione la costruisce il worker
+  const singletons = toPort.filter((i) => CATALOG[i.type].singleton);
+  const toExport = toPort.filter((i) => !CATALOG[i.type].singleton);
   const notPortable = toPort.filter((i) => CATALOG[i.type].portable === false);
   if (notPortable.length) {
     throw new Error(`Questi oggetti si possono solo abbinare, non portare: ${notPortable.map((i) => `${CATALOG[i.type].label} "${i.name}"`).join(', ')}`);
@@ -114,46 +117,54 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const tgtCreds = credsOf(targetEnv);
 
   // ---- 1. Export dal sorgente ----
-  await mkdir(runnerDir, { recursive: true });
-  const runner = {
-    terraform: {
-      required_providers: { genesyscloud: { source: 'mypurecloud/genesyscloud', version: config.GENESYS_PROVIDER_VERSION } },
-    },
-    provider: { genesyscloud: {} },
-    resource: {
-      genesyscloud_tf_export: {
-        export: {
-          // Percorso relativo con "/": su Windows un percorso assoluto (c:\...) viene scambiato
-          // dal provider per un URL ("unsupported protocol scheme c") quando scarica script e prompt
-          directory: path.relative(runnerDir, exportDir).split(path.sep).join('/'),
-          export_format: 'json',
-          include_state_file: false,
-          enable_dependency_resolution: false,
-          // Il vecchio esportatore dei flow non scrive i file YAML: lascia il percorso come variabile da
-          // compilare a mano (var.genesyscloud_flow_..._filepath) e il plan fallisce con "empty file path"
-          use_legacy_architect_flow_exporter: false,
-          split_files_by_resource: false,
-          include_filter_resources: toPort.map(includeFilter),
+  // Mai un export senza filtro: esporterebbe l'intera org
+  let cfg: TfJson = { resource: {} };
+  let cfgPath = path.join(exportDir, 'genesyscloud.tf.json');
+  if (!toExport.length) {
+    await mkdir(exportDir, { recursive: true });
+    log.info('Nessun oggetto da esportare dal sorgente: solo oggetti unici per org');
+  } else {
+    await mkdir(runnerDir, { recursive: true });
+    const runner = {
+      terraform: {
+        required_providers: { genesyscloud: { source: 'mypurecloud/genesyscloud', version: config.GENESYS_PROVIDER_VERSION } },
+      },
+      provider: { genesyscloud: {} },
+      resource: {
+        genesyscloud_tf_export: {
+          export: {
+            // Percorso relativo con "/": su Windows un percorso assoluto (c:\...) viene scambiato
+            // dal provider per un URL ("unsupported protocol scheme c") quando scarica script e prompt
+            directory: path.relative(runnerDir, exportDir).split(path.sep).join('/'),
+            export_format: 'json',
+            include_state_file: false,
+            enable_dependency_resolution: false,
+            // Il vecchio esportatore dei flow non scrive i file YAML: lascia il percorso come variabile da
+            // compilare a mano (var.genesyscloud_flow_..._filepath) e il plan fallisce con "empty file path"
+            use_legacy_architect_flow_exporter: false,
+            split_files_by_resource: false,
+            include_filter_resources: toExport.map(includeFilter),
+          },
         },
       },
-    },
-  };
-  await writeFile(path.join(runnerDir, 'main.tf.json'), JSON.stringify(runner, null, 2));
-  log.info(
-    `Export da ${sourceEnv.name} (genesyscloud_tf_export): sola lettura, i file vengono scritti in locale. ` +
-      `"Apply complete" qui sotto si riferisce alla sola risorsa di export.`,
-  );
-  await tfOrThrow(['init', '-no-color', '-input=false'], runnerDir, srcCreds, log.line);
-  await tfOrThrow(['apply', '-no-color', '-auto-approve', '-input=false'], runnerDir, srcCreds, log.line);
+    };
+    await writeFile(path.join(runnerDir, 'main.tf.json'), JSON.stringify(runner, null, 2));
+    log.info(
+      `Export da ${sourceEnv.name} (genesyscloud_tf_export): sola lettura, i file vengono scritti in locale. ` +
+        `"Apply complete" qui sotto si riferisce alla sola risorsa di export.`,
+    );
+    await tfOrThrow(['init', '-no-color', '-input=false'], runnerDir, srcCreds, log.line);
+    await tfOrThrow(['apply', '-no-color', '-auto-approve', '-input=false'], runnerDir, srcCreds, log.line);
+
+    const exportFile = (await readdir(exportDir)).find((f) => f.endsWith('.tf.json'));
+    if (!exportFile) throw new Error('Export senza file .tf.json');
+    cfgPath = path.join(exportDir, exportFile);
+    cfg = JSON.parse(await readFile(cfgPath, 'utf8')) as TfJson;
+  }
 
   // ---- 2. Selezione risorse e rimappatura ID ----
-  const exportFile = (await readdir(exportDir)).find((f) => f.endsWith('.tf.json'));
-  if (!exportFile) throw new Error('Export senza file .tf.json');
-  const cfgPath = path.join(exportDir, exportFile);
-  let cfg = JSON.parse(await readFile(cfgPath, 'utf8')) as TfJson;
-
-  const addresses = selectResources(cfg, toPort);
-  const missing = toPort.filter((i) => !addresses.has(i));
+  const addresses = selectResources(cfg, toExport);
+  const missing = toExport.filter((i) => !addresses.has(i));
   if (missing.length) {
     throw new Error(`Oggetti non trovati nell'export: ${missing.map((m) => `${m.type} "${m.name}"`).join(', ')}`);
   }
@@ -187,6 +198,16 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
 
   // Configurazione: ID del target oppure riferimento alla risorsa creata nel job (mai sé stessa, mai i percorsi)
   cfg = remapConfig(cfg, targetIds, sameJobRefs);
+
+  // Wrap-up code mappings: unione di sorgente e target, già con gli ID del target
+  for (const it of singletons) {
+    const tfType = CATALOG[it.type].tfType;
+    const sourceClient = new GenesysClient(sourceEnv);
+    const body = await buildWrapupMappings(sourceClient, targetClient, targetIds, sameJobRefs, log.info);
+    cfg.resource ??= {};
+    cfg.resource[tfType] = { [WRAPUP_MAPPINGS_ID]: body };
+    addresses.set({ ...it, targetId: WRAPUP_MAPPINGS_ID }, `${tfType}.${WRAPUP_MAPPINGS_ID}`);
+  }
 
   // Deployment di Messenger: versione della configurazione valida sul target
   await alignWebDeploymentVersions(cfg, targetClient, log.info);

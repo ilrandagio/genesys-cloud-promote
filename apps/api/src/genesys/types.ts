@@ -37,6 +37,8 @@ export const OBJECT_TYPES = [
   'responselibrary',
   'response',
   'responseasset',
+  // Outbound, oggetto unico per org
+  'wrapupmapping',
 ] as const;
 
 /** Tipi che in Genesys Cloud appartengono a una divisione */

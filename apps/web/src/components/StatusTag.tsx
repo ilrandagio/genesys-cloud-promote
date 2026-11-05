@@ -66,6 +66,7 @@ export const TYPE_LABELS: Record<string, string> = {
   responselibrary: 'Libreria risposte',
   response: 'Canned response',
   responseasset: 'Asset canned response',
+  wrapupmapping: 'Wrap-up code mappings',
 };
 
 /** Tipi di flow Architect (campo "type" di /api/v2/flows) */

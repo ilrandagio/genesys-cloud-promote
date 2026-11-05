@@ -7,7 +7,15 @@ export interface ListingClient {
   listAll<T = any>(path: string, extraQuery?: string): Promise<T[]>;
 }
 
-export type TypeGroup = 'Architect' | 'Routing' | 'Integrazioni' | 'Outbound' | 'Messaging' | 'Canned response' | 'Organizzazione';
+export type TypeGroup =
+  | 'Architect'
+  | 'Routing'
+  | 'Integrations'
+  | 'Outbound'
+  | 'Messaging'
+  | 'Canned Responses'
+  | 'People & Permissions'
+  | 'Telephony';
 
 /** ID con cui il provider gestisce (e importa) i wrap-up code mappings */
 export const WRAPUP_MAPPINGS_ID = 'wrapupcodemappings';
@@ -37,7 +45,7 @@ export interface TypeDef {
 export const CATALOG: Record<ObjectType, TypeDef> = {
   flow: {
     group: 'Architect',
-    label: 'Flow Architect',
+    label: 'Flow',
     listPath: '/api/v2/flows',
     getPath: '/api/v2/flows/{id}',
     tfType: 'genesyscloud_flow',
@@ -45,7 +53,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   queue: {
     group: 'Routing',
-    label: 'Code',
+    label: 'Queue',
     listPath: '/api/v2/routing/queues',
     getPath: '/api/v2/routing/queues/{id}',
     tfType: 'genesyscloud_routing_queue',
@@ -53,7 +61,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   skill: {
     group: 'Routing',
-    label: 'Skill',
+    label: 'ACD Skill',
     listPath: '/api/v2/routing/skills',
     getPath: '/api/v2/routing/skills/{id}',
     tfType: 'genesyscloud_routing_skill',
@@ -61,7 +69,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   wrapupcode: {
     group: 'Routing',
-    label: 'Wrap-up code',
+    label: 'Wrap-up Code',
     listPath: '/api/v2/routing/wrapupcodes',
     getPath: '/api/v2/routing/wrapupcodes/{id}',
     tfType: 'genesyscloud_routing_wrapupcode',
@@ -76,16 +84,16 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     comparable: true,
   },
   dataaction: {
-    group: 'Integrazioni',
-    label: 'Data action',
+    group: 'Integrations',
+    label: 'Data Action',
     listPath: '/api/v2/integrations/actions',
     getPath: '/api/v2/integrations/actions/{id}?expand=contract&includeConfig=true',
     tfType: 'genesyscloud_integration_action',
     comparable: true,
   },
   integration: {
-    group: 'Integrazioni',
-    label: 'Integrazione',
+    group: 'Integrations',
+    label: 'Integration',
     listPath: '/api/v2/integrations',
     getPath: '/api/v2/integrations/{id}',
     tfType: 'genesyscloud_integration',
@@ -101,7 +109,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   schedulegroup: {
     group: 'Architect',
-    label: 'Schedule group',
+    label: 'Schedule Group',
     listPath: '/api/v2/architect/schedulegroups',
     getPath: '/api/v2/architect/schedulegroups/{id}',
     tfType: 'genesyscloud_architect_schedulegroups',
@@ -109,7 +117,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   script: {
     group: 'Architect',
-    label: 'Script agente',
+    label: 'Script',
     listPath: '/api/v2/scripts',
     getPath: '/api/v2/scripts/{id}',
     tfType: 'genesyscloud_script',
@@ -118,7 +126,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   datatable: {
     group: 'Architect',
-    label: 'Data table',
+    label: 'Data Table',
     listPath: '/api/v2/flows/datatables',
     getPath: '/api/v2/flows/datatables/{id}?expand=schema',
     tfType: 'genesyscloud_architect_datatable',
@@ -126,15 +134,15 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   emergencygroup: {
     group: 'Architect',
-    label: 'Emergency group',
+    label: 'Emergency Group',
     listPath: '/api/v2/architect/emergencygroups',
     getPath: '/api/v2/architect/emergencygroups/{id}',
     tfType: 'genesyscloud_architect_emergencygroup',
     comparable: true,
   },
   division: {
-    group: 'Organizzazione',
-    label: 'Divisione',
+    group: 'People & Permissions',
+    label: 'Division',
     listPath: '/api/v2/authorization/divisions',
     getPath: '/api/v2/authorization/divisions/{id}',
     tfType: 'genesyscloud_auth_division',
@@ -142,7 +150,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   prompt: {
     group: 'Architect',
-    label: 'User prompt',
+    label: 'User Prompt',
     listPath: '/api/v2/architect/prompts',
     getPath: '/api/v2/architect/prompts/{id}',
     tfType: 'genesyscloud_architect_user_prompt',
@@ -152,7 +160,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   // ---- Outbound ----
   campaign: {
     group: 'Outbound',
-    label: 'Campagna outbound',
+    label: 'Campaign',
     listPath: '/api/v2/outbound/campaigns',
     getPath: '/api/v2/outbound/campaigns/{id}',
     tfType: 'genesyscloud_outbound_campaign',
@@ -160,7 +168,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   messagingcampaign: {
     group: 'Outbound',
-    label: 'Campagna messaging',
+    label: 'Messaging Campaign',
     listPath: '/api/v2/outbound/messagingcampaigns',
     getPath: '/api/v2/outbound/messagingcampaigns/{id}',
     tfType: 'genesyscloud_outbound_messagingcampaign',
@@ -168,7 +176,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   sequence: {
     group: 'Outbound',
-    label: 'Sequenza di campagne',
+    label: 'Campaign Sequence',
     listPath: '/api/v2/outbound/sequences',
     getPath: '/api/v2/outbound/sequences/{id}',
     tfType: 'genesyscloud_outbound_sequence',
@@ -176,7 +184,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   contactlist: {
     group: 'Outbound',
-    label: 'Lista contatti (call list)',
+    label: 'Contact List',
     listPath: '/api/v2/outbound/contactlists',
     getPath: '/api/v2/outbound/contactlists/{id}',
     tfType: 'genesyscloud_outbound_contact_list',
@@ -184,7 +192,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   contactlistfilter: {
     group: 'Outbound',
-    label: 'Filtro lista contatti',
+    label: 'Contact List Filter',
     listPath: '/api/v2/outbound/contactlistfilters',
     getPath: '/api/v2/outbound/contactlistfilters/{id}',
     tfType: 'genesyscloud_outbound_contactlistfilter',
@@ -192,7 +200,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   dnclist: {
     group: 'Outbound',
-    label: 'Lista DNC',
+    label: 'DNC List',
     listPath: '/api/v2/outbound/dnclists',
     getPath: '/api/v2/outbound/dnclists/{id}',
     tfType: 'genesyscloud_outbound_dnclist',
@@ -200,7 +208,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   callanalysisresponseset: {
     group: 'Outbound',
-    label: 'Call analysis response set',
+    label: 'Call Analysis Response Set',
     listPath: '/api/v2/outbound/callanalysisresponsesets',
     getPath: '/api/v2/outbound/callanalysisresponsesets/{id}',
     tfType: 'genesyscloud_outbound_callanalysisresponseset',
@@ -208,7 +216,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   ruleset: {
     group: 'Outbound',
-    label: 'Rule set',
+    label: 'Rule Set',
     listPath: '/api/v2/outbound/rulesets',
     getPath: '/api/v2/outbound/rulesets/{id}',
     tfType: 'genesyscloud_outbound_ruleset',
@@ -216,7 +224,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   digitalruleset: {
     group: 'Outbound',
-    label: 'Digital rule set',
+    label: 'Digital Rule Set',
     listPath: '/api/v2/outbound/digitalrulesets',
     getPath: '/api/v2/outbound/digitalrulesets/{id}',
     tfType: 'genesyscloud_outbound_digitalruleset',
@@ -224,7 +232,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   campaignrule: {
     group: 'Outbound',
-    label: 'Regola di campagna',
+    label: 'Campaign Rule',
     listPath: '/api/v2/outbound/campaignrules',
     getPath: '/api/v2/outbound/campaignrules/{id}',
     tfType: 'genesyscloud_outbound_campaignrule',
@@ -232,7 +240,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   attemptlimit: {
     group: 'Outbound',
-    label: 'Attempt limit',
+    label: 'Attempt Limit',
     listPath: '/api/v2/outbound/attemptlimits',
     getPath: '/api/v2/outbound/attemptlimits/{id}',
     tfType: 'genesyscloud_outbound_attempt_limit',
@@ -240,7 +248,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   callabletimeset: {
     group: 'Outbound',
-    label: 'Callable time set',
+    label: 'Callable Time Set',
     listPath: '/api/v2/outbound/callabletimesets',
     getPath: '/api/v2/outbound/callabletimesets/{id}',
     tfType: 'genesyscloud_outbound_callabletimeset',
@@ -248,15 +256,15 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   filespectemplate: {
     group: 'Outbound',
-    label: 'File specification template',
+    label: 'File Specification Template',
     listPath: '/api/v2/outbound/filespecificationtemplates',
     getPath: '/api/v2/outbound/filespecificationtemplates/{id}',
     tfType: 'genesyscloud_outbound_filespecificationtemplate',
     comparable: true,
   },
   site: {
-    group: 'Organizzazione',
-    label: 'Sito telefonico',
+    group: 'Telephony',
+    label: 'Site',
     listPath: '/api/v2/telephony/providers/edges/sites',
     getPath: '/api/v2/telephony/providers/edges/sites/{id}',
     tfType: 'genesyscloud_telephony_providers_edges_site',
@@ -264,8 +272,8 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     portable: false,
   },
   edgegroup: {
-    group: 'Organizzazione',
-    label: 'Edge group',
+    group: 'Telephony',
+    label: 'Edge Group',
     listPath: '/api/v2/telephony/providers/edges/edgegroups',
     getPath: '/api/v2/telephony/providers/edges/edgegroups/{id}',
     tfType: 'genesyscloud_telephony_providers_edges_edge_group',
@@ -275,7 +283,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
 
   wrapupmapping: {
     group: 'Outbound',
-    label: 'Wrap-up code mappings',
+    label: 'Wrap-up Code Mappings',
     listPath: '/api/v2/outbound/wrapupcodemappings',
     getPath: '/api/v2/outbound/wrapupcodemappings',
     tfType: 'genesyscloud_outbound_wrapupcodemappings',
@@ -296,7 +304,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   // ---- Messaging ----
   webconfig: {
     group: 'Messaging',
-    label: 'Messenger configuration',
+    label: 'Messenger Configuration',
     listPath: '/api/v2/webdeployments/configurations',
     getPath: '/api/v2/webdeployments/configurations/{id}/versions/draft',
     tfType: 'genesyscloud_webdeployments_configuration',
@@ -307,7 +315,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   webdeployment: {
     group: 'Messaging',
-    label: 'Messenger deployment',
+    label: 'Messenger Deployment',
     listPath: '/api/v2/webdeployments/deployments',
     getPath: '/api/v2/webdeployments/deployments/{id}',
     tfType: 'genesyscloud_webdeployments_deployment',
@@ -316,7 +324,7 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
   },
   supportedcontent: {
     group: 'Messaging',
-    label: 'Supported content profile',
+    label: 'Supported Content',
     listPath: '/api/v2/conversations/messaging/supportedcontent',
     getPath: '/api/v2/conversations/messaging/supportedcontent/{id}',
     tfType: 'genesyscloud_conversations_messaging_supportedcontent',
@@ -325,16 +333,16 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
 
   // ---- Canned response ----
   responselibrary: {
-    group: 'Canned response',
-    label: 'Libreria di risposte',
+    group: 'Canned Responses',
+    label: 'Canned Response Library',
     listPath: '/api/v2/responsemanagement/libraries',
     getPath: '/api/v2/responsemanagement/libraries/{id}',
     tfType: 'genesyscloud_responsemanagement_library',
     comparable: true,
   },
   response: {
-    group: 'Canned response',
-    label: 'Canned response',
+    group: 'Canned Responses',
+    label: 'Canned Response',
     listPath: '/api/v2/responsemanagement/responses',
     getPath: '/api/v2/responsemanagement/responses/{id}',
     tfType: 'genesyscloud_responsemanagement_response',
@@ -349,8 +357,8 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     comparable: true,
   },
   responseasset: {
-    group: 'Canned response',
-    label: 'Asset di canned response',
+    group: 'Canned Responses',
+    label: 'Canned Response Asset',
     listPath: '/api/v2/responsemanagement/responseassets/search',
     getPath: '/api/v2/responsemanagement/responseassets/{id}',
     tfType: 'genesyscloud_responsemanagement_responseasset',

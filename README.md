@@ -30,30 +30,31 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 
 | Gruppo | Tipi |
 |---|---|
-| Architect | flow, schedule, schedule group, user prompt, script agente, data table, emergency group |
-| Routing | code, skill, wrap-up code, language |
-| Integrazioni | integrazioni, data action |
-| Outbound | campagne voce, campagne messaging, sequenze, liste contatti (call list), filtri, liste DNC, call analysis response set, rule set, digital rule set, regole di campagna, attempt limit, callable time set, file specification template, wrap-up code mappings |
-| Messaging | Messenger configuration, Messenger deployment, supported content profile |
-| Canned response | librerie, risposte, asset (immagini e file) |
-| Organizzazione | divisioni; siti ed edge group **solo associati** per nome |
+| Architect | Flows, Schedules, Schedule Groups, User Prompts, Scripts, Data Tables, Emergency Groups |
+| Routing | Queues, ACD Skills, Wrap-up Codes, Languages |
+| Integrations | Integrations, Data Actions |
+| Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
+| Messaging | Messenger Configurations, Messenger Deployments, Supported Content |
+| Canned Responses | Libraries, Responses, Assets |
+| People & Permissions | Divisions |
+| Telephony | Sites, Edge Groups (**solo associati** per nome) |
 
 ### Regole di sicurezza applicate automaticamente
 
-- **Campagne e sequenze arrivano spente** sul target (`campaign_status`/`status` = `off`): si avviano a mano dopo il rilascio.
-- **Le liste contatti si portano senza contatti**: viene creata la struttura (colonne, numeri, attempt limit), i dati non escono dal sorgente.
-- **Siti ed edge group** non si portano: dipendono dalla telefonia di ciascuna org. Se esistono sul target con lo stesso nome
+- **Campaigns e Campaign Sequences arrivano spente** sul target (`campaign_status`/`status` = `off`): si avviano a mano dopo il rilascio.
+- **Le Contact Lists si portano senza contatti**: viene creata la struttura (colonne, numeri, Attempt Limit), i dati non escono dal sorgente.
+- **Sites ed Edge Groups** non si portano: dipendono dalla telefonia di ciascuna org. Se esistono sul target con lo stesso nome
   vengono usati, altrimenti l'oggetto che li usa va corretto a mano (l'azione *Porta* non è disponibile).
-- **Asset delle canned response**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
-  testo delle risposte vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,
+- **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
+  testo delle Responses vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,
   se viene caricato nello stesso rilascio si usa il riferimento Terraform `content_location` (valorizzato dopo il caricamento,
-  che quindi avviene prima della risposta).
-- **Wrap-up code mappings** (oggetto unico per org): non si sovrascrivono, si **uniscono**. Si parte dalla mappatura del
-  target e si applicano i flag dei wrap-up code del sorgente presenti sul target (o portati nello stesso rilascio);
-  le associazioni che esistono solo sul target restano, il set di default resta quello del target. Se un wrap-up code
+  che quindi avviene prima della Response).
+- **Wrap-up Code Mappings** (oggetto unico per org): non si sovrascrivono, si **uniscono**. Si parte dalla mappatura del
+  target e si applicano i flag dei Wrap-up Codes del sorgente presenti sul target (o portati nello stesso rilascio);
+  le associazioni che esistono solo sul target restano, il Default Set resta quello del target. Se un Wrap-up Code
   della mappatura del sorgente non è sul target e non viene portato, la simulazione si ferma con l'elenco.
-- **Messenger deployment**: punta alla versione della configuration creata nello stesso rilascio oppure all'ultima versione
-  pubblicata della configuration già presente sul target.
+- **Messenger Deployment**: punta alla versione della Messenger Configuration creata nello stesso rilascio oppure all'ultima versione
+  pubblicata della Messenger Configuration già presente sul target.
 
 ## Architettura
 
@@ -151,10 +152,10 @@ Client Credentials configurati nella pagina Ambienti (sezione successiva). Lo st
 
 Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
 
-- **Sorgente**: lettura su Architect (flow, dependency tracking, prompt, schedule), Routing (code, skill,
-  wrap-up code, language), Integrations (integrazioni e action), Outbound (campagne, liste, regole, ecc.),
-  Web Deployments (configuration e deployment), Response Management (librerie, risposte, asset),
-  Telephony (siti, edge group: solo lettura), più quanto richiesto da `tf_export`.
+- **Sorgente**: lettura su Architect (Flows, Dependency Tracking, User Prompts, Schedules), Routing (Queues, ACD Skills,
+  Wrap-up Codes, Languages), Integrations (Integrations e Data Actions), Outbound (Campaigns, Contact Lists, Rule Sets, ecc.),
+  Web Deployments (Messenger Configurations e Deployments), Response Management (Libraries, Responses, Assets),
+  Telephony (Sites, Edge Groups: solo lettura), più quanto richiesto da `tf_export`.
 - **Target**: gli stessi permessi in lettura più la scrittura sugli stessi oggetti (add/edit/publish dei flow).
 
 Il pulsante *Prova connessione* nella pagina Ambienti verifica le credenziali.
@@ -210,10 +211,10 @@ Le migrazioni del DB partono da sole all'avvio dell'API.
   non i permessi dell'utente loggato.
 - **Tipi di oggetto**: per aggiungerne uno basta una voce in `genesys/catalog.ts` (endpoint e tipo Terraform)
   e, se ha dipendenze, un caso in `genesys/dependencies.ts`.
-- **Dipendenze non gestite** (utenti, gruppi, divisioni, data table, bot…) sono mostrate in analisi ma non portate:
+- **Dipendenze non gestite** (Users, Groups, Divisions, Data Tables, Bots…) sono mostrate in analisi ma non portate:
   vanno verificate a mano sul target.
-- **Match per nome**: oggetti con lo stesso nome in divisioni diverse non sono distinti.
-- **Data table**: viene portata la struttura della tabella, non le righe.
+- **Match per nome**: oggetti con lo stesso nome in Divisions diverse non sono distinti.
+- **Data Tables**: viene portata la struttura della tabella, non le righe.
 - **Flow**: si porta l'ultima versione pubblicata; la Dependency Tracking API richiede che il flow sia pubblicato.
 - Va validato su org reali il formato dell'export (nomi delle label, riferimenti tra risorse) con la versione
   del provider in uso: la selezione delle risorse è in `worker/exportConfig.ts`.

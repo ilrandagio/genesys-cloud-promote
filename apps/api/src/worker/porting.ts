@@ -10,7 +10,13 @@ import { db, schema } from '../lib/db.js';
 import type { Environment } from '../lib/schema.js';
 import { getEnvironment } from '../lib/repo.js';
 import { packArtifact, unpackArtifact } from './artifact.js';
-import { alignWebDeploymentVersions, applySafetyRules, buildWrapupMappings, rewriteAssetLinks } from './transforms.js';
+import {
+  alignWebDeploymentVersions,
+  applyCampaignTelephony,
+  applySafetyRules,
+  buildWrapupMappings,
+  rewriteAssetLinks,
+} from './transforms.js';
 import { appliedFromOutput, blockReason, comparableChanges, describeDrift, summarize, type PlanJson } from './planJson.js';
 import {
   addDependsOn,
@@ -194,6 +200,9 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
 
   // Configurazione: ID del target oppure riferimento alla risorsa creata nel job (mai sé stessa, mai i percorsi)
   cfg = remapConfig(cfg, targetIds, sameJobRefs);
+
+  // Campaign: Site ed Edge Group scelti sul target (mai quelli del sorgente)
+  await applyCampaignTelephony(cfg, addresses, targetClient, log.info);
 
   // Wrap-up code mappings: unione di sorgente e target, già con gli ID del target
   for (const it of singletons) {

@@ -235,3 +235,45 @@ export async function buildWrapupMappings(
     mappings: [...merged].map(([wrapup_code_id, flags]) => ({ wrapup_code_id, flags })),
   };
 }
+
+/**
+ * Campaign: Site ed Edge Group dipendono dalla telefonia di ciascuna org e non si portano. Si usano quelli
+ * del target scelti dall'utente nell'analisi; ogni scelta viene verificata sul target. Se la Campaign del
+ * sorgente usa un Site o un Edge Group e sul target non è stato scelto, la simulazione si ferma.
+ */
+export async function applyCampaignTelephony(
+  cfg: TfJson,
+  addresses: Map<PortItem, string>,
+  target: Reader,
+  log: Log,
+) {
+  const tfType = CATALOG.campaign.tfType;
+  const missing: string[] = [];
+  for (const [it, addr] of addresses) {
+    if (it.type !== 'campaign') continue;
+    const attrs = cfg.resource?.[tfType]?.[addr.slice(tfType.length + 1)];
+    if (!attrs) continue;
+    const fields = [
+      { attr: 'site_id', chosen: it.targetSiteId, label: 'Site', path: '/api/v2/telephony/providers/edges/sites/{id}' },
+      { attr: 'edge_group_id', chosen: it.targetEdgeGroupId, label: 'Edge Group', path: '/api/v2/telephony/providers/edges/edgegroups/{id}' },
+    ];
+    for (const f of fields) {
+      if (!attrs[f.attr]) continue;
+      if (!f.chosen) {
+        missing.push(`${f.label} della Campaign "${it.name}"`);
+        continue;
+      }
+      let name: string;
+      try {
+        name = (await target.get<{ name: string }>(f.path.replace('{id}', encodeURIComponent(f.chosen)))).name;
+      } catch {
+        throw new Error(`${f.label} scelto per la Campaign "${it.name}" non trovato sul target (${f.chosen})`);
+      }
+      attrs[f.attr] = f.chosen;
+      log(`Campaign "${it.name}": ${f.label} del target "${name}"`);
+    }
+  }
+  if (missing.length) {
+    throw new Error(`Scegliere sul target: ${missing.join(', ')}. Si sceglie nell'analisi, sulla riga della Campaign.`);
+  }
+}

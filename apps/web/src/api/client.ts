@@ -81,7 +81,20 @@ export interface DependencyNode {
   error?: string;
   division?: DivisionRef;
   target?: { status: TargetStatus; id?: string; diff?: string[]; division?: DivisionRef; divisionMissing?: boolean };
+  /** Solo Campaign: Site ed Edge Group usati sul sorgente */
+  telephony?: { site?: NamedRef; edgeGroup?: NamedRef };
   children: DependencyNode[];
+}
+
+export interface NamedRef {
+  id: string;
+  name: string;
+}
+
+/** Site ed Edge Group del target scelti per una Campaign */
+export interface TelephonyChoice {
+  siteId?: string;
+  edgeGroupId?: string;
 }
 
 export interface PortItem {
@@ -92,6 +105,8 @@ export interface PortItem {
   action: PortAction;
   targetStatus: TargetStatus;
   targetId?: string;
+  targetSiteId?: string;
+  targetEdgeGroupId?: string;
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';

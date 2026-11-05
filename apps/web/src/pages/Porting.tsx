@@ -19,13 +19,15 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   api,
   type DependencyNode,
   type Environment,
   type GcObject,
+  type NamedRef,
+  type TelephonyChoice,
   type ObjectType,
   type PortAction,
   type PortItem,
@@ -81,6 +83,7 @@ export default function PortingPage() {
   const [trees, setTrees] = useSessionState<DependencyNode[] | undefined>('trees', undefined);
   const [warnings, setWarnings] = useSessionState<string[]>('warnings', []);
   const [actions, setActions] = useSessionState<Map<string, PortAction>>('actions', new Map(), mapCodec());
+  const [telephony, setTelephony] = useSessionState<Map<string, TelephonyChoice>>('telephony', new Map(), mapCodec());
   const [includeDivisions, setIncludeDivisions] = useSessionState('includeDivisions', false);
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
   const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>('plan', undefined);
@@ -142,6 +145,45 @@ export default function PortingPage() {
     }
   };
 
+  /** Campaign dell'analisi che usano un Site o un Edge Group sul sorgente */
+  const telephonyNodes = useMemo(() => {
+    const out = new Map<string, DependencyNode>();
+    const walk = (n: DependencyNode) => {
+      if (n.telephony && !out.has(keyOf(n))) out.set(keyOf(n), n);
+      n.children.forEach(walk);
+    };
+    trees?.forEach(walk);
+    return out;
+  }, [trees]);
+
+  /** Sites ed Edge Groups del target, tra cui scegliere quelli delle Campaign */
+  const targetTelephony = useQuery({
+    queryKey: ['telephony', targetId],
+    queryFn: () => api<{ sites: NamedRef[]; edgeGroups: NamedRef[] }>(`/api/environments/${targetId}/telephony`),
+    enabled: !!targetId && telephonyNodes.size > 0,
+  });
+
+  // Proposta iniziale: Site ed Edge Group del target con lo stesso nome di quelli del sorgente
+  useEffect(() => {
+    const data = targetTelephony.data;
+    if (!data || !telephonyNodes.size) return;
+    const byName = (list: NamedRef[], ref?: NamedRef) =>
+      ref ? list.find((x) => x.name.toLowerCase() === ref.name.toLowerCase())?.id : undefined;
+    let changed = false;
+    const next = new Map(telephony);
+    // Scelte non valide sul target attuale (es. target cambiato): si ripropone per nome
+    const valid = (c: TelephonyChoice) =>
+      (!c.siteId || data.sites.some((x) => x.id === c.siteId)) &&
+      (!c.edgeGroupId || data.edgeGroups.some((x) => x.id === c.edgeGroupId));
+    for (const [key, n] of telephonyNodes) {
+      const current = next.get(key);
+      if (current && valid(current)) continue;
+      next.set(key, { siteId: byName(data.sites, n.telephony?.site), edgeGroupId: byName(data.edgeGroups, n.telephony?.edgeGroup) });
+      changed = true;
+    }
+    if (changed) setTelephony(next);
+  }, [targetTelephony.data, telephonyNodes, telephony, setTelephony]);
+
   /** Elenco unico degli oggetti con l'azione scelta (un oggetto può comparire più volte nell'albero) */
   const items = useMemo<PortItem[]>(() => {
     const out = new Map<string, PortItem>();
@@ -155,13 +197,16 @@ export default function PortingPage() {
           action: actions.get(keyOf(n)) ?? 'skip',
           targetStatus: n.target.status,
           targetId: n.target.id,
+          ...(n.telephony
+            ? { targetSiteId: telephony.get(keyOf(n))?.siteId, targetEdgeGroupId: telephony.get(keyOf(n))?.edgeGroupId }
+            : {}),
         });
       }
       n.children.forEach(walk);
     };
     trees?.forEach(walk);
     return [...out.values()];
-  }, [trees, actions]);
+  }, [trees, actions, telephony]);
 
   /** Archi dell'albero ("from" usa "to"): il server li usa per l'ordine di creazione (depends_on) */
   const edges = useMemo(() => {
@@ -185,11 +230,20 @@ export default function PortingPage() {
       JSON.stringify([
         sourceId,
         targetId,
-        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '']),
+        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '', i.targetSiteId ?? '', i.targetEdgeGroupId ?? '']),
       ]),
     [sourceId, targetId, items],
   );
   const planIsCurrent = !!plan && plan.fingerprint === fingerprint;
+
+  /** Campaign da portare a cui manca la scelta di Site o Edge Group del target */
+  const telephonyMissing = items
+    .filter((i) => i.action === 'port' && telephonyNodes.has(keyOf(i)))
+    .filter((i) => {
+      const t = telephonyNodes.get(keyOf(i))!.telephony!;
+      return (t.site && !i.targetSiteId) || (t.edgeGroup && !i.targetEdgeGroupId);
+    })
+    .map((i) => i.name);
 
   const counts = {
     port: items.filter((i) => i.action === 'port').length,
@@ -414,9 +468,19 @@ export default function PortingPage() {
                     <Tag color="orange">simulazione non più valida</Tag>
                   </Tooltip>
                 ))}
-              <Button type="primary" icon={<ExperimentOutlined />} loading={submitting} disabled={!counts.port} onClick={simulate}>
-                Simula (plan)
-              </Button>
+              <Tooltip
+                title={telephonyMissing.length ? `Scegliere Site ed Edge Group del target per: ${telephonyMissing.join(', ')}` : undefined}
+              >
+                <Button
+                  type="primary"
+                  icon={<ExperimentOutlined />}
+                  loading={submitting}
+                  disabled={!counts.port || telephonyMissing.length > 0}
+                  onClick={simulate}
+                >
+                  Simula (plan)
+                </Button>
+              </Tooltip>
             </Space>
           }
         >
@@ -554,7 +618,7 @@ export default function PortingPage() {
                   render: (_, n) => {
                     if (!n.supported || n.repeated || !n.target) return null;
                     const exists = n.target?.status !== 'missing';
-                    return (
+                    const action = (
                       <Select<PortAction>
                         size="small"
                         style={{ width: 240 }}
@@ -566,6 +630,43 @@ export default function PortingPage() {
                           { value: 'skip', label: 'Salta' },
                         ]}
                       />
+                    );
+                    if (!n.telephony || actions.get(keyOf(n)) !== 'port') return action;
+                    // Campaign: Site ed Edge Group non si portano, si sceglie quello del target
+                    const choice = telephony.get(keyOf(n)) ?? {};
+                    const choose = (patch: TelephonyChoice) => setTelephony(new Map(telephony).set(keyOf(n), { ...choice, ...patch }));
+                    const picker = (
+                      label: string,
+                      source: NamedRef,
+                      list: NamedRef[] | undefined,
+                      value: string | undefined,
+                      onChange: (v: string) => void,
+                    ) => (
+                      <Tooltip title={`Sul sorgente: ${source.name}`}>
+                        <Select
+                          size="small"
+                          style={{ width: 240 }}
+                          showSearch
+                          optionFilterProp="label"
+                          loading={targetTelephony.isLoading}
+                          status={value ? undefined : 'error'}
+                          placeholder={`${label} del target`}
+                          value={value}
+                          onChange={onChange}
+                          options={(list ?? []).map((x) => ({ value: x.id, label: `${label}: ${x.name}` }))}
+                        />
+                      </Tooltip>
+                    );
+                    return (
+                      <Space direction="vertical" size={4}>
+                        {action}
+                        {n.telephony.site &&
+                          picker('Site', n.telephony.site, targetTelephony.data?.sites, choice.siteId, (v) => choose({ siteId: v }))}
+                        {n.telephony.edgeGroup &&
+                          picker('Edge Group', n.telephony.edgeGroup, targetTelephony.data?.edgeGroups, choice.edgeGroupId, (v) =>
+                            choose({ edgeGroupId: v }),
+                          )}
+                      </Space>
                     );
                   },
                 },

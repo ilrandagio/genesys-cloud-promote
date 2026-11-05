@@ -41,6 +41,9 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 ### Regole di sicurezza applicate automaticamente
 
 - **Campaigns e Campaign Sequences arrivano spente** sul target (`campaign_status`/`status` = `off`): si avviano a mano dopo il rilascio.
+- **Site ed Edge Group delle Campaigns si scelgono sul target**: dipendono dalla telefonia di ciascuna org e non si portano.
+  Nell'analisi, sulla riga di una Campaign da portare, si scelgono Site ed Edge Group del target (proposti per nome
+  uguale a quelli del sorgente); senza scelta la simulazione non parte. Il worker verifica che esistano sul target.
 - **Le Contact Lists si portano senza contatti**: viene creata la struttura (colonne, numeri, Attempt Limit), i dati non escono dal sorgente.
 - **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
   testo delle Responses vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,
@@ -152,7 +155,8 @@ Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
 - **Sorgente**: lettura su Architect (Flows, Dependency Tracking, User Prompts, Schedules), Routing (Queues, ACD Skills,
   Wrap-up Codes, Languages), Integrations (Integrations e Data Actions), Outbound (Campaigns, Contact Lists, Rule Sets, ecc.),
   Web Deployments (Messenger Configurations e Deployments), Response Management (Libraries, Responses, Assets), più quanto richiesto da `tf_export`.
-- **Target**: gli stessi permessi in lettura più la scrittura sugli stessi oggetti (add/edit/publish dei flow).
+- **Target**: gli stessi permessi in lettura più la scrittura sugli stessi oggetti (add/edit/publish dei flow),
+  e la lettura di Telephony (Sites, Edge Groups) per scegliere quelli delle Campaigns.
 
 Il pulsante *Prova connessione* nella pagina Ambienti verifica le credenziali.
 

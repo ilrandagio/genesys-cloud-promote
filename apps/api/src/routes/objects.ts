@@ -4,7 +4,7 @@ import { CATALOG, listObjects } from '../genesys/catalog.js';
 import { GenesysClient } from '../genesys/client.js';
 import { TargetComparer } from '../genesys/compare.js';
 import { buildDependencyTree, lazyIdIndex } from '../genesys/dependencies.js';
-import { OBJECT_TYPES, toDivision, type ObjectType } from '../genesys/types.js';
+import { OBJECT_TYPES, toDivision, type DependencyNode, type NamedRef, type ObjectType } from '../genesys/types.js';
 import { getEnvironment } from '../lib/repo.js';
 import { requireAuth } from './auth.js';
 
@@ -57,6 +57,19 @@ export async function objectRoutes(app: FastifyInstance) {
     return reply.header('Content-Type', 'application/json; charset=utf-8').send(JSON.stringify(content, null, 2));
   });
 
+  /** Sites ed Edge Groups di un ambiente: tra questi si scelgono quelli da usare nelle Campaign portate */
+  app.get('/api/environments/:envId/telephony', async (req) => {
+    const { envId } = z.object({ envId: z.string() }).parse(req.params);
+    const client = await clientFor(envId);
+    const named = (list: any[]): NamedRef[] =>
+      list.map((o) => ({ id: o.id, name: o.name })).sort((a, b) => a.name.localeCompare(b.name));
+    const [sites, edgeGroups] = await Promise.all([
+      client.listAll('/api/v2/telephony/providers/edges/sites'),
+      client.listAll('/api/v2/telephony/providers/edges/edgegroups'),
+    ]);
+    return { sites: named(sites), edgeGroups: named(edgeGroups) };
+  });
+
   /**
    * Analisi: per ogni oggetto selezionato costruisce l'albero delle dipendenze sul sorgente
    * e marca ogni nodo con lo stato sul target.
@@ -83,6 +96,24 @@ export async function objectRoutes(app: FastifyInstance) {
       const tree = await buildDependencyTree(source, obj, { includeDivisions: body.includeDivisions, idIndex });
       await comparer.annotate(tree);
       trees.push(tree);
+    }
+
+    // Campaign: Site ed Edge Group del sorgente, da sostituire con quelli scelti sul target
+    const campaigns = new Map<string, DependencyNode[]>();
+    const collect = (n: DependencyNode) => {
+      if (n.type === 'campaign' && n.supported) campaigns.set(n.id, [...(campaigns.get(n.id) ?? []), n]);
+      n.children.forEach(collect);
+    };
+    trees.forEach(collect);
+    for (const [id, nodes] of campaigns) {
+      try {
+        const c = await source.get(CATALOG.campaign.getPath.replace('{id}', encodeURIComponent(id)));
+        const ref = (r: any): NamedRef | undefined => (r?.id ? { id: r.id, name: r.name ?? r.id } : undefined);
+        const telephony = { site: ref(c.site), edgeGroup: ref(c.edgeGroup) };
+        if (telephony.site || telephony.edgeGroup) nodes.forEach((n) => (n.telephony = telephony));
+      } catch {
+        // dettaglio non leggibile: l'errore è già sul nodo
+      }
     }
     const built = idIndex.peek();
     const unreadable = built ? (await built).unreadable : [];

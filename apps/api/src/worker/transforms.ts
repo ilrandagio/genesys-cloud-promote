@@ -175,12 +175,13 @@ interface WrapupReader extends Reader {
  * - si parte dalla mappatura del target (solo i wrap-up code che esistono ancora);
  * - per ogni wrap-up code del sorgente disponibile sul target (riusato o portato nello stesso job) si
  *   applicano i flag del sorgente;
- * - i wrap-up code del sorgente non disponibili sul target vengono saltati e segnalati;
+ * - se un wrap-up code del sorgente non è disponibile sul target (né presente né portato) la simulazione
+ *   si ferma con l'elenco: la mappatura del target non deve restare incompleta;
  * - il set di default resta quello del target (vale per tutti i wrap-up code non mappati dell'org).
  * Il plan mostra esattamente quali associazioni cambiano.
  */
 export async function buildWrapupMappings(
-  source: Reader,
+  source: WrapupReader,
   target: WrapupReader,
   targetIds: Map<string, string>,
   sameJobRefs: Map<string, string>,
@@ -201,22 +202,29 @@ export async function buildWrapupMappings(
     if (existing.has(id.toLowerCase())) merged.set(id, flags);
   }
   let updated = 0;
-  const skipped: string[] = [];
+  const unavailable: string[] = [];
   for (const [srcId, flags] of Object.entries(src.mapping ?? {})) {
     const key = srcId.toLowerCase();
     const ref = targetIds.get(key) ?? (sameJobRefs.has(key) ? `\${${sameJobRefs.get(key)}.id}` : undefined);
     if (!ref) {
-      skipped.push(srcId);
+      unavailable.push(srcId);
       continue;
     }
     const before = merged.get(ref);
     if (!before || [...before].sort().join() !== [...flags].sort().join()) updated++;
     merged.set(ref, flags);
   }
-  log(
-    `Wrap-up code mappings: ${merged.size} associazioni sul target dopo l'unione, ${updated} nuove o modificate dal sorgente` +
-      (skipped.length ? `, ${skipped.length} saltate perché il wrap-up code non è sul target né portato` : ''),
-  );
+  if (unavailable.length) {
+    const names = new Map(
+      (await source.listAll<{ id: string; name: string }>('/api/v2/routing/wrapupcodes')).map((w) => [w.id.toLowerCase(), w.name]),
+    );
+    const list = unavailable.map((id) => `"${names.get(id.toLowerCase()) ?? id}"`).sort();
+    throw new Error(
+      `Wrap-up code mappings: ${list.length} wrap-up code del sorgente non sono disponibili sul target: ${list.join(', ')}. ` +
+        `Portarli insieme alla mappatura (azione "Porta" nell'albero) oppure crearli sul target, poi rifare la simulazione.`,
+    );
+  }
+  log(`Wrap-up code mappings: ${merged.size} associazioni sul target dopo l'unione, ${updated} nuove o modificate dal sorgente`);
   const srcDefault = [...(src.defaultSet ?? [])].sort().join(', ');
   const tgtDefault = [...(tgt.defaultSet ?? [])].sort().join(', ');
   if (srcDefault !== tgtDefault) {

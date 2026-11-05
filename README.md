@@ -50,8 +50,8 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   che quindi avviene prima della risposta).
 - **Wrap-up code mappings** (oggetto unico per org): non si sovrascrivono, si **uniscono**. Si parte dalla mappatura del
   target e si applicano i flag dei wrap-up code del sorgente presenti sul target (o portati nello stesso rilascio);
-  le associazioni che esistono solo sul target restano, il set di default resta quello del target. Nell'analisi i
-  wrap-up code della mappatura assenti sul target sono proposti come *Salta*.
+  le associazioni che esistono solo sul target restano, il set di default resta quello del target. Se un wrap-up code
+  della mappatura del sorgente non è sul target e non viene portato, la simulazione si ferma con l'elenco.
 - **Messenger deployment**: punta alla versione della configuration creata nello stesso rilascio oppure all'ultima versione
   pubblicata della configuration già presente sul target.
 

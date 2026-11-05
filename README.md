@@ -37,14 +37,11 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 | Messaging | Messenger Configurations, Messenger Deployments, Supported Content |
 | Canned Responses | Libraries, Responses, Assets |
 | People & Permissions | Divisions |
-| Telephony | Sites, Edge Groups (**solo associati** per nome) |
 
 ### Regole di sicurezza applicate automaticamente
 
 - **Campaigns e Campaign Sequences arrivano spente** sul target (`campaign_status`/`status` = `off`): si avviano a mano dopo il rilascio.
 - **Le Contact Lists si portano senza contatti**: viene creata la struttura (colonne, numeri, Attempt Limit), i dati non escono dal sorgente.
-- **Sites ed Edge Groups** non si portano: dipendono dalla telefonia di ciascuna org. Se esistono sul target con lo stesso nome
-  vengono usati, altrimenti l'oggetto che li usa va corretto a mano (l'azione *Porta* non è disponibile).
 - **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
   testo delle Responses vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,
   se viene caricato nello stesso rilascio si usa il riferimento Terraform `content_location` (valorizzato dopo il caricamento,
@@ -154,8 +151,7 @@ Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
 
 - **Sorgente**: lettura su Architect (Flows, Dependency Tracking, User Prompts, Schedules), Routing (Queues, ACD Skills,
   Wrap-up Codes, Languages), Integrations (Integrations e Data Actions), Outbound (Campaigns, Contact Lists, Rule Sets, ecc.),
-  Web Deployments (Messenger Configurations e Deployments), Response Management (Libraries, Responses, Assets),
-  Telephony (Sites, Edge Groups: solo lettura), più quanto richiesto da `tf_export`.
+  Web Deployments (Messenger Configurations e Deployments), Response Management (Libraries, Responses, Assets), più quanto richiesto da `tf_export`.
 - **Target**: gli stessi permessi in lettura più la scrittura sugli stessi oggetti (add/edit/publish dei flow).
 
 Il pulsante *Prova connessione* nella pagina Ambienti verifica le credenziali.

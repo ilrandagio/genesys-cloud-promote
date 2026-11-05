@@ -38,8 +38,6 @@ const REFERENCE_TYPES: ObjectType[] = (
     'attemptlimit',
     'callabletimeset',
     'filespectemplate',
-    'site',
-    'edgegroup',
     'webconfig',
     'webdeployment',
     'supportedcontent',

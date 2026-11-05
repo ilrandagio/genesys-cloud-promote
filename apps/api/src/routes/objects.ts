@@ -16,7 +16,7 @@ export async function objectRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
 
   app.get('/api/object-types', async () =>
-    OBJECT_TYPES.map((t) => ({ type: t, label: CATALOG[t].label, group: CATALOG[t].group, portable: CATALOG[t].portable !== false })),
+    OBJECT_TYPES.map((t) => ({ type: t, label: CATALOG[t].label, group: CATALOG[t].group })),
   );
 
   /** Elenco degli oggetti di un tipo su un ambiente */

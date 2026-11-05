@@ -14,8 +14,7 @@ export type TypeGroup =
   | 'Outbound'
   | 'Messaging'
   | 'Canned Responses'
-  | 'People & Permissions'
-  | 'Telephony';
+  | 'People & Permissions';
 
 /** ID con cui il provider gestisce (e importa) i wrap-up code mappings */
 export const WRAPUP_MAPPINGS_ID = 'wrapupcodemappings';
@@ -27,11 +26,6 @@ export interface TypeDef {
   singleton?: boolean;
   /** Elenco personalizzato, per gli endpoint che non sono una lista paginata standard */
   list?: (client: ListingClient) => Promise<any[]>;
-  /**
-   * false = l'oggetto non viene mai portato (es. siti telefonici): può solo essere abbinato
-   * per nome a quello già presente sul target
-   */
-  portable?: boolean;
   /** Endpoint di lista (paginato) */
   listPath: string;
   /** Endpoint di dettaglio, {id} viene sostituito */
@@ -262,25 +256,6 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_outbound_filespecificationtemplate',
     comparable: true,
   },
-  site: {
-    group: 'Telephony',
-    label: 'Site',
-    listPath: '/api/v2/telephony/providers/edges/sites',
-    getPath: '/api/v2/telephony/providers/edges/sites/{id}',
-    tfType: 'genesyscloud_telephony_providers_edges_site',
-    comparable: false,
-    portable: false,
-  },
-  edgegroup: {
-    group: 'Telephony',
-    label: 'Edge Group',
-    listPath: '/api/v2/telephony/providers/edges/edgegroups',
-    getPath: '/api/v2/telephony/providers/edges/edgegroups/{id}',
-    tfType: 'genesyscloud_telephony_providers_edges_edge_group',
-    comparable: false,
-    portable: false,
-  },
-
   wrapupmapping: {
     group: 'Outbound',
     label: 'Wrap-up Code Mappings',

@@ -27,8 +27,6 @@ export const OBJECT_TYPES = [
   'attemptlimit',
   'callabletimeset',
   'filespectemplate',
-  'site',
-  'edgegroup',
   // Messaging
   'webconfig',
   'webdeployment',

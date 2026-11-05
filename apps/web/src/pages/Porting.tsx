@@ -23,7 +23,6 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   api,
-  NON_PORTABLE,
   type DependencyNode,
   type Environment,
   type GcObject,
@@ -56,7 +55,6 @@ function toRows(n: DependencyNode, path: string, isRoot: boolean): TreeRow {
 
 /** Azione proposta di default in base allo stato sul target */
 function defaultAction(n: DependencyNode, isRoot: boolean): PortAction {
-  if (NON_PORTABLE.has(n.type)) return n.target && n.target.status !== 'missing' ? 'reuse' : 'skip';
   if (isRoot) return 'port';
   switch (n.target?.status) {
     case 'missing':
@@ -93,7 +91,7 @@ export default function PortingPage() {
   const envs = useQuery({ queryKey: ['environments'], queryFn: () => api<Environment[]>('/api/environments') });
   const types = useQuery({
     queryKey: ['object-types'],
-    queryFn: () => api<{ type: ObjectType; label: string; group: string; portable: boolean }[]>('/api/object-types'),
+    queryFn: () => api<{ type: ObjectType; label: string; group: string }[]>('/api/object-types'),
   });
   const objects = useQuery({
     queryKey: ['objects', sourceId, type],
@@ -337,7 +335,7 @@ export default function PortingPage() {
                 optionFilterProp="label"
                 options={Object.entries(
                   (types.data ?? []).reduce<Record<string, { value: ObjectType; label: string }[]>>((acc, t) => {
-                    (acc[t.group] ??= []).push({ value: t.type, label: t.portable ? t.label : `${t.label} (solo associazione)` });
+                    (acc[t.group] ??= []).push({ value: t.type, label: t.label });
                     return acc;
                   }, {}),
                 ).map(([group, opts]) => ({ label: group, options: opts }))}
@@ -563,9 +561,7 @@ export default function PortingPage() {
                         value={actions.get(keyOf(n))}
                         onChange={(v) => setActions(new Map(actions).set(keyOf(n), v))}
                         options={[
-                          ...(NON_PORTABLE.has(n.type)
-                            ? []
-                            : [{ value: 'port' as const, label: exists ? 'Porta (sovrascrivi sul target)' : 'Porta' }]),
+                          { value: 'port', label: exists ? 'Porta (sovrascrivi sul target)' : 'Porta' },
                           ...(exists ? [{ value: 'reuse' as const, label: 'Usa quella del target' }] : []),
                           { value: 'skip', label: 'Salta' },
                         ]}

@@ -106,10 +106,6 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // Gli oggetti unici per org (wrap-up code mappings) non si esportano: la configurazione la costruisce il worker
   const singletons = toPort.filter((i) => CATALOG[i.type].singleton);
   const toExport = toPort.filter((i) => !CATALOG[i.type].singleton);
-  const notPortable = toPort.filter((i) => CATALOG[i.type].portable === false);
-  if (notPortable.length) {
-    throw new Error(`Questi oggetti si possono solo abbinare, non portare: ${notPortable.map((i) => `${CATALOG[i.type].label} "${i.name}"`).join(', ')}`);
-  }
 
   log.info(`Simulazione: ${sourceEnv.name} -> ${targetEnv.name}, ${toPort.length} oggetti da portare`);
   log.info('SIMULAZIONE: nessuna modifica verrà applicata alle org');

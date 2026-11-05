@@ -58,8 +58,6 @@ export const TYPE_LABELS: Record<string, string> = {
   attemptlimit: 'Attempt Limit',
   callabletimeset: 'Callable Time Set',
   filespectemplate: 'File Specification Template',
-  site: 'Site',
-  edgegroup: 'Edge Group',
   webconfig: 'Messenger Configuration',
   webdeployment: 'Messenger Deployment',
   supportedcontent: 'Supported Content',

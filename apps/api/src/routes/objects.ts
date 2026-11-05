@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { CATALOG } from '../genesys/catalog.js';
+import { CATALOG, listObjects } from '../genesys/catalog.js';
 import { GenesysClient } from '../genesys/client.js';
 import { TargetComparer } from '../genesys/compare.js';
 import { buildDependencyTree, lazyIdIndex } from '../genesys/dependencies.js';
@@ -16,7 +16,7 @@ export async function objectRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
 
   app.get('/api/object-types', async () =>
-    OBJECT_TYPES.map((t) => ({ type: t, label: CATALOG[t].label })),
+    OBJECT_TYPES.map((t) => ({ type: t, label: CATALOG[t].label, group: CATALOG[t].group, portable: CATALOG[t].portable !== false })),
   );
 
   /** Elenco degli oggetti di un tipo su un ambiente */
@@ -25,7 +25,7 @@ export async function objectRoutes(app: FastifyInstance) {
       .object({ envId: z.string(), type: z.enum(OBJECT_TYPES) })
       .parse(req.params);
     const client = await clientFor(envId);
-    const items = await client.listAll(CATALOG[type as ObjectType].listPath);
+    const items = await listObjects(client, type as ObjectType);
     return items
       .map((o: any) => ({
         type,

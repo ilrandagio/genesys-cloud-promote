@@ -13,6 +13,30 @@ export const OBJECT_TYPES = [
   'script',
   'datatable',
   'emergencygroup',
+  // Outbound
+  'campaign',
+  'messagingcampaign',
+  'sequence',
+  'contactlist',
+  'contactlistfilter',
+  'dnclist',
+  'callanalysisresponseset',
+  'ruleset',
+  'digitalruleset',
+  'campaignrule',
+  'attemptlimit',
+  'callabletimeset',
+  'filespectemplate',
+  'site',
+  'edgegroup',
+  // Messaging
+  'webconfig',
+  'webdeployment',
+  'supportedcontent',
+  // Canned response
+  'responselibrary',
+  'response',
+  'responseasset',
 ] as const;
 
 /** Tipi che in Genesys Cloud appartengono a una divisione */
@@ -25,6 +49,16 @@ export const DIVISIONED_TYPES: ReadonlySet<ObjectType> = new Set<ObjectType>([
   'script',
   'datatable',
   'emergencygroup',
+  'campaign',
+  'messagingcampaign',
+  'contactlist',
+  'contactlistfilter',
+  'dnclist',
+  'callanalysisresponseset',
+  'ruleset',
+  'campaignrule',
+  'callabletimeset',
+  'responseasset',
 ]);
 
 export type ObjectType = (typeof OBJECT_TYPES)[number];

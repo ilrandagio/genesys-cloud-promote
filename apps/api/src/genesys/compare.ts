@@ -1,4 +1,4 @@
-import { CATALOG } from './catalog.js';
+import { CATALOG, listObjects } from './catalog.js';
 import { NotFoundError, PermissionError, type GenesysClient } from './client.js';
 import { toDivision, type DependencyNode, type DivisionRef, type GcObjectRef, type ObjectType, type TargetInfo } from './types.js';
 
@@ -61,7 +61,7 @@ export class TargetComparer {
   ) {}
 
   private cached(cache: Map<ObjectType, Promise<any[]>>, client: GenesysClient, type: ObjectType) {
-    if (!cache.has(type)) cache.set(type, client.listAll(CATALOG[type].listPath));
+    if (!cache.has(type)) cache.set(type, listObjects(client, type));
     return cache.get(type)!;
   }
 

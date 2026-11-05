@@ -23,6 +23,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   api,
+  NON_PORTABLE,
   type DependencyNode,
   type Environment,
   type GcObject,
@@ -37,7 +38,8 @@ import { mapCodec, useSessionState } from '../hooks/useSessionState';
 const keyOf = (o: { type: string; id: string }) => `${o.type}:${o.id}`;
 
 /** Tipi che in Genesys Cloud possono appartenere a una divisione */
-const DIVISIONED = new Set<ObjectType>(['flow', 'queue', 'schedule', 'schedulegroup', 'wrapupcode', 'script', 'datatable', 'emergencygroup']);
+const DIVISIONED = new Set<ObjectType>(['flow', 'queue', 'schedule', 'schedulegroup', 'wrapupcode', 'script', 'datatable', 'emergencygroup',
+  'campaign', 'messagingcampaign', 'contactlist', 'contactlistfilter', 'dnclist', 'callanalysisresponseset', 'ruleset', 'campaignrule', 'callabletimeset', 'responseasset']);
 
 interface TreeRow extends Omit<DependencyNode, 'children'> {
   rowKey: string;
@@ -54,6 +56,7 @@ function toRows(n: DependencyNode, path: string, isRoot: boolean): TreeRow {
 
 /** Azione proposta di default in base allo stato sul target */
 function defaultAction(n: DependencyNode, isRoot: boolean): PortAction {
+  if (NON_PORTABLE.has(n.type)) return n.target && n.target.status !== 'missing' ? 'reuse' : 'skip';
   if (isRoot) return 'port';
   switch (n.target?.status) {
     case 'missing':
@@ -90,7 +93,7 @@ export default function PortingPage() {
   const envs = useQuery({ queryKey: ['environments'], queryFn: () => api<Environment[]>('/api/environments') });
   const types = useQuery({
     queryKey: ['object-types'],
-    queryFn: () => api<{ type: ObjectType; label: string }[]>('/api/object-types'),
+    queryFn: () => api<{ type: ObjectType; label: string; group: string; portable: boolean }[]>('/api/object-types'),
   });
   const objects = useQuery({
     queryKey: ['objects', sourceId, type],
@@ -330,7 +333,14 @@ export default function PortingPage() {
                   setType(v);
                   setSearch('');
                 }}
-                options={(types.data ?? []).map((t) => ({ value: t.type, label: t.label }))}
+                showSearch
+                optionFilterProp="label"
+                options={Object.entries(
+                  (types.data ?? []).reduce<Record<string, { value: ObjectType; label: string }[]>>((acc, t) => {
+                    (acc[t.group] ??= []).push({ value: t.type, label: t.portable ? t.label : `${t.label} (solo associazione)` });
+                    return acc;
+                  }, {}),
+                ).map(([group, opts]) => ({ label: group, options: opts }))}
               />
             </Col>
             <Col flex="auto">
@@ -553,7 +563,9 @@ export default function PortingPage() {
                         value={actions.get(keyOf(n))}
                         onChange={(v) => setActions(new Map(actions).set(keyOf(n), v))}
                         options={[
-                          { value: 'port', label: exists ? 'Porta (sovrascrivi sul target)' : 'Porta' },
+                          ...(NON_PORTABLE.has(n.type)
+                            ? []
+                            : [{ value: 'port' as const, label: exists ? 'Porta (sovrascrivi sul target)' : 'Porta' }]),
                           ...(exists ? [{ value: 'reuse' as const, label: 'Usa quella del target' }] : []),
                           { value: 'skip', label: 'Salta' },
                         ]}

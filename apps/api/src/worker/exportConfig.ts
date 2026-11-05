@@ -233,9 +233,13 @@ export function unexportedFiles(cfg: TfJson): string[] {
   const out: string[] = [];
   for (const [type, labels] of Object.entries(cfg.resource ?? {})) {
     for (const [label, attrs] of Object.entries(labels)) {
-      if (!attrs || !('filepath' in attrs)) continue;
-      const fp = attrs.filepath;
-      if (typeof fp !== 'string' || !fp.trim() || fp.includes('${var.')) out.push(`${type}.${label}`);
+      if (!attrs) continue;
+      // filepath: flow e script; filename: file degli asset delle canned response
+      for (const key of ['filepath', 'filename']) {
+        if (!(key in attrs)) continue;
+        const fp = attrs[key];
+        if (typeof fp !== 'string' || !fp.trim() || fp.includes('${var.')) out.push(`${type}.${label}`);
+      }
     }
   }
   return out;

@@ -3,6 +3,7 @@ import { and, desc, eq, gt, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { CATALOG } from '../genesys/catalog.js';
 import { OBJECT_TYPES } from '../genesys/types.js';
 import { db, schema } from '../lib/db.js';
 import { enqueuePorting } from '../lib/queue.js';
@@ -127,6 +128,10 @@ export async function jobRoutes(app: FastifyInstance) {
     const target = await getEnvironment(body.targetEnvId);
     if (!target.allowAsTarget) throw new HttpError(400, `${target.name} non è abilitato come target`);
     if (!body.items.some((i) => i.action === 'port')) throw new HttpError(400, 'Nessun oggetto da portare');
+    const notPortable = body.items.filter((i) => i.action === 'port' && CATALOG[i.type].portable === false);
+    if (notPortable.length) {
+      throw new HttpError(400, `Si possono solo abbinare, non portare: ${notPortable.map((i) => i.name).join(', ')}`);
+    }
 
     const keys = new Set(body.items.map((i) => `${i.type}:${i.id}`.toLowerCase()));
     const edges = body.edges.filter((e) => keys.has(e.from.toLowerCase()) && keys.has(e.to.toLowerCase()));

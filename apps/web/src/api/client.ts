@@ -12,7 +12,28 @@ export type ObjectType =
   | 'division'
   | 'script'
   | 'datatable'
-  | 'emergencygroup';
+  | 'emergencygroup'
+  | 'campaign'
+  | 'messagingcampaign'
+  | 'sequence'
+  | 'contactlist'
+  | 'contactlistfilter'
+  | 'dnclist'
+  | 'callanalysisresponseset'
+  | 'ruleset'
+  | 'digitalruleset'
+  | 'campaignrule'
+  | 'attemptlimit'
+  | 'callabletimeset'
+  | 'filespectemplate'
+  | 'site'
+  | 'edgegroup'
+  | 'webconfig'
+  | 'webdeployment'
+  | 'supportedcontent'
+  | 'responselibrary'
+  | 'response'
+  | 'responseasset';
 
 export interface DivisionRef {
   id?: string;
@@ -20,6 +41,9 @@ export interface DivisionRef {
 }
 
 export type TargetStatus = 'missing' | 'same' | 'different' | 'present';
+/** Tipi che si possono solo associare per nome sul target, mai portare */
+export const NON_PORTABLE = new Set<ObjectType>(['site', 'edgegroup']);
+
 export type PortAction = 'port' | 'reuse' | 'skip';
 
 export interface Environment {

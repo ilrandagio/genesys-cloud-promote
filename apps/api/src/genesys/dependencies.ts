@@ -1,4 +1,4 @@
-import { CATALOG, flowDependencyType, fromDependencyType } from './catalog.js';
+import { CATALOG, flowDependencyType, fromDependencyType, listObjects } from './catalog.js';
 import { GenesysClient, NotFoundError, PermissionError } from './client.js';
 import { idKey, idTokens } from './ids.js';
 import { DIVISIONED_TYPES, toDivision, type DependencyNode, type GcObjectRef, type ObjectType } from './types.js';
@@ -6,21 +6,48 @@ import { DIVISIONED_TYPES, toDivision, type DependencyNode, type GcObjectRef, ty
 type Get = (path: string) => Promise<any>;
 
 /** Tipi che una configurazione (script, flow) può referenziare */
-const REFERENCE_TYPES: ObjectType[] = [
-  'dataaction',
-  'datatable',
-  'queue',
-  'flow',
-  'wrapupcode',
-  'skill',
-  'language',
-  'prompt',
-  'schedule',
-  'schedulegroup',
-  'emergencygroup',
-  'integration',
-  'script',
-];
+const REFERENCE_TYPES: ObjectType[] = (
+  [
+    'dataaction',
+    'datatable',
+    'queue',
+    'flow',
+    'wrapupcode',
+    'skill',
+    'language',
+    'prompt',
+    'schedule',
+    'schedulegroup',
+    'emergencygroup',
+    'integration',
+    'script',
+  ] as ObjectType[]
+).concat(
+  // Outbound, messaging e canned response: referenziati per ID nei dettagli degli oggetti
+  [
+    'campaign',
+    'messagingcampaign',
+    'sequence',
+    'contactlist',
+    'contactlistfilter',
+    'dnclist',
+    'callanalysisresponseset',
+    'ruleset',
+    'digitalruleset',
+    'campaignrule',
+    'attemptlimit',
+    'callabletimeset',
+    'filespectemplate',
+    'site',
+    'edgegroup',
+    'webconfig',
+    'webdeployment',
+    'supportedcontent',
+    'responselibrary',
+    'response',
+    'responseasset',
+  ] as ObjectType[],
+);
 
 /**
  * Tipi che possono essere referenziati anche per nome (es. data action e data table nelle azioni
@@ -72,7 +99,7 @@ export function lazyIdIndex(client: GenesysClient) {
       const unreadable: string[] = [];
       for (const type of REFERENCE_TYPES) {
         try {
-          for (const o of await client.listAll(CATALOG[type].listPath)) {
+          for (const o of await listObjects(client, type)) {
             const entry: IdIndexEntry = {
               type,
               id: String(o.id),
@@ -134,7 +161,7 @@ function stringValues(value: unknown, includeKeys: boolean, out = new Set<string
  *   solo nomi univoci dei tipi principali, perché lì i nomi compaiono anche come testo libero.
  * Gli ID interni (pagine, componenti, task, azioni, variabili...) e l'oggetto stesso vengono ignorati.
  */
-function scanReferences(value: unknown, index: IdIndex, self: GcObjectRef, mode: 'flow' | 'script'): RawDep[] {
+function scanReferences(value: unknown, index: IdIndex, self: GcObjectRef, mode: 'flow' | 'script' | 'id'): RawDep[] {
   const deps = new Map<string, RawDep>();
   const add = (hit: IdIndexEntry, byName: boolean) => {
     if (idKey(hit.id) === idKey(self.id)) return;
@@ -153,6 +180,9 @@ function scanReferences(value: unknown, index: IdIndex, self: GcObjectRef, mode:
     const hit = index.byId.get(token);
     if (hit) add(hit, false);
   }
+
+  // "id": solo riferimenti per ID (dettaglio di un oggetto della Platform API, dove i riferimenti sono sempre ID)
+  if (mode === 'id') return [...deps.values()];
 
   const selfName = self.name.trim().toLowerCase();
   for (const str of stringValues(value, mode === 'flow')) {
@@ -261,8 +291,15 @@ async function directDependencies(
       }));
     }
 
-    default:
+    case 'division':
       return [];
+
+    default: {
+      // Tutti gli altri tipi (outbound, messaging, canned response, routing...): il dettaglio della Platform API
+      // contiene i riferimenti come ID (contactList, queue, script, callAnalysisResponseSet, assets, flow...)
+      const detail = await get(CATALOG[obj.type].getPath.replace('{id}', encodeURIComponent(obj.id)));
+      return scanReferences(detail, await idIndex(), obj, 'id');
+    }
   }
 }
 

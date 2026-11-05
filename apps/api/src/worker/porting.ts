@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { GenesysClient, PermissionError } from '../genesys/client.js';
+import { CATALOG } from '../genesys/catalog.js';
 import { awsRegion } from '../genesys/regions.js';
 import type { PortItem } from '../genesys/types.js';
 import { and, eq, sql } from 'drizzle-orm';
@@ -9,6 +10,7 @@ import { db, schema } from '../lib/db.js';
 import type { Environment } from '../lib/schema.js';
 import { getEnvironment } from '../lib/repo.js';
 import { packArtifact, unpackArtifact } from './artifact.js';
+import { alignWebDeploymentVersions, applySafetyRules, rewriteAssetLinks } from './transforms.js';
 import { appliedFromOutput, blockReason, comparableChanges, describeDrift, summarize, type PlanJson } from './planJson.js';
 import {
   addDependsOn,
@@ -101,6 +103,10 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const exportDir = path.join(workDir, 'export');
   const items: PortItem[] = job.items;
   const toPort = items.filter((i) => i.action === 'port');
+  const notPortable = toPort.filter((i) => CATALOG[i.type].portable === false);
+  if (notPortable.length) {
+    throw new Error(`Questi oggetti si possono solo abbinare, non portare: ${notPortable.map((i) => `${CATALOG[i.type].label} "${i.name}"`).join(', ')}`);
+  }
 
   log.info(`Simulazione: ${sourceEnv.name} -> ${targetEnv.name}, ${toPort.length} oggetti da portare`);
   log.info('SIMULAZIONE: nessuna modifica verrà applicata alle org');
@@ -152,6 +158,9 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
     throw new Error(`Oggetti non trovati nell'export: ${missing.map((m) => `${m.type} "${m.name}"`).join(', ')}`);
   }
 
+  // Regole di sicurezza: campagne e sequenze spente, liste senza contatti, indirizzo degli asset rimosso
+  applySafetyRules(cfg, log.info);
+
   // Ogni file referenziato (YAML dei flow, JSON degli script) deve essere stato davvero esportato
   const unexported = unexportedFiles(cfg);
   if (unexported.length) {
@@ -172,8 +181,15 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
 
   const missingDivisions = await mapDivisionsByName(sourceEnv, targetEnv, targetIds, log.info);
 
+  // Link agli asset nei testi delle canned response: URL interi, prima della rimappatura dei GUID
+  const targetClient = new GenesysClient(targetEnv);
+  await rewriteAssetLinks(cfg, items, addresses, targetClient, log.info);
+
   // Configurazione: ID del target oppure riferimento alla risorsa creata nel job (mai sé stessa, mai i percorsi)
   cfg = remapConfig(cfg, targetIds, sameJobRefs);
+
+  // Deployment di Messenger: versione della configurazione valida sul target
+  await alignWebDeploymentVersions(cfg, targetClient, log.info);
 
   // File esportati (JSON degli script, YAML dei flow): ID scritti in chiaro nel contenuto
   const { report: fileReport, missingFiles } = await remapReferencedFiles(cfg, exportDir, targetIds, sameJobRefs);

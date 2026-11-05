@@ -13,8 +13,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
    (i plan verso di esso richiedono l'approvazione di una seconda persona).
 3. **Porting**:
    - scelta di sorgente e target;
-   - elenco degli oggetti del sorgente per tipo (flow, code, skill, wrap-up code, language, data action,
-     integrazioni, schedule, schedule group, prompt, script agente, data table, emergency group, divisioni) e selezione multipla anche tra tipi diversi;
+   - elenco degli oggetti del sorgente per tipo, raggruppati (vedi *Tipi supportati*), e selezione multipla anche tra tipi diversi;
    - **analisi**: albero delle dipendenze di ogni oggetto, con lo stato sul target per ciascun nodo:
      *Mancante*, *Presente uguale*, *Presente diverso* (con l'elenco dei campi diversi), *Presente*
      (esiste, contenuto non confrontato: i flow);
@@ -26,6 +25,31 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
      non sia cambiato.
 4. **Storico**: simulazioni ed esecuzioni con stato del plan, modifiche, chi ha simulato, approvato ed eseguito,
    risorse scritte, log e output (audit).
+
+## Tipi supportati
+
+| Gruppo | Tipi |
+|---|---|
+| Architect | flow, schedule, schedule group, user prompt, script agente, data table, emergency group |
+| Routing | code, skill, wrap-up code, language |
+| Integrazioni | integrazioni, data action |
+| Outbound | campagne voce, campagne messaging, sequenze, liste contatti (call list), filtri, liste DNC, call analysis response set, rule set, digital rule set, regole di campagna, attempt limit, callable time set, file specification template |
+| Messaging | Messenger configuration, Messenger deployment, supported content profile |
+| Canned response | librerie, risposte, asset (immagini e file) |
+| Organizzazione | divisioni; siti ed edge group **solo associati** per nome |
+
+### Regole di sicurezza applicate automaticamente
+
+- **Campagne e sequenze arrivano spente** sul target (`campaign_status`/`status` = `off`): si avviano a mano dopo il rilascio.
+- **Le liste contatti si portano senza contatti**: viene creata la struttura (colonne, numeri, attempt limit), i dati non escono dal sorgente.
+- **Siti ed edge group** non si portano: dipendono dalla telefonia di ciascuna org. Se esistono sul target con lo stesso nome
+  vengono usati, altrimenti l'oggetto che li usa va corretto a mano (l'azione *Porta* non è disponibile).
+- **Asset delle canned response**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
+  testo delle risposte vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,
+  se viene caricato nello stesso rilascio si usa il riferimento Terraform `content_location` (valorizzato dopo il caricamento,
+  che quindi avviene prima della risposta).
+- **Messenger deployment**: punta alla versione della configuration creata nello stesso rilascio oppure all'ultima versione
+  pubblicata della configuration già presente sul target.
 
 ## Architettura
 
@@ -124,7 +148,9 @@ Client Credentials configurati nella pagina Ambienti (sezione successiva). Lo st
 Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
 
 - **Sorgente**: lettura su Architect (flow, dependency tracking, prompt, schedule), Routing (code, skill,
-  wrap-up code, language), Integrations (integrazioni e action), più quanto richiesto da `tf_export`.
+  wrap-up code, language), Integrations (integrazioni e action), Outbound (campagne, liste, regole, ecc.),
+  Web Deployments (configuration e deployment), Response Management (librerie, risposte, asset),
+  Telephony (siti, edge group: solo lettura), più quanto richiesto da `tf_export`.
 - **Target**: gli stessi permessi in lettura più la scrittura sugli stessi oggetti (add/edit/publish dei flow).
 
 Il pulsante *Prova connessione* nella pagina Ambienti verifica le credenziali.

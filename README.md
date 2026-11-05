@@ -37,8 +37,13 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
   - flow → unione di due fonti: Architect *Dependency Tracking API* (`/api/v2/architect/dependencytracking/object`,
     affidabile solo se Genesys ha già calcolato le dipendenze) e gli ID degli oggetti trovati nella configurazione
     del flow (`/api/v2/flows/{id}/latestconfiguration`): data action, data table, code, altri flow, prompt, script…;
-  - i riferimenti si riconoscono per ID (anche con prefisso, es. `custom_-_<guid>` delle data action) e, per
-    data action, data table, flow, emergency group e schedule group, anche per nome esatto (solo nomi univoci);
+  - i riferimenti si riconoscono per ID (anche con prefisso, es. `custom_-_<guid>` delle data action) e per nome.
+    Nei **flow** i riferimenti sono per nome: vale il nome esatto di qualunque tipo di oggetto (anche come chiave di
+    un blocco, es. il nome della data action), i prompt nella forma `Prompt.<nome>`; le espressioni Architect
+    (`Flow.`, `Task.`, `State.`…) sono ignorate. Nell'albero questi nodi hanno il tag "per nome".
+    Negli **script** il nome vale solo se univoco e per data action, data table, flow, emergency group e schedule group;
+  - nel porting i riferimenti per nome dei flow non vengono modificati: sul target si risolvono per nome,
+    basta che gli oggetti esistano con lo stesso nome;
   - nell'albero l'icona `</>` accanto a flow e script apre la configurazione grezza letta da Genesys, utile per
     capire perché un riferimento non viene riconosciuto;
   - code → in-queue flow, whisper prompt, skill del bullseye, wrap-up code;

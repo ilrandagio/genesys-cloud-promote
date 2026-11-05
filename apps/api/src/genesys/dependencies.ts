@@ -29,6 +29,17 @@ const REFERENCE_TYPES: ObjectType[] = [
 const NAME_REFERENCE_TYPES = new Set<ObjectType>(['dataaction', 'datatable', 'flow', 'emergencygroup', 'schedulegroup']);
 const MIN_NAME_LENGTH = 4;
 
+/**
+ * Nei flow Architect i riferimenti sono per nome: lì il riconoscimento per nome vale per tutti i tipi,
+ * anche con nomi brevi (code e skill hanno spesso nomi corti) e anche se lo stesso nome esiste in più tipi.
+ */
+const MIN_FLOW_NAME_LENGTH = 2;
+
+/** Espressioni Architect che non sono nomi di oggetti (variabili, funzioni) */
+const ARCHITECT_EXPRESSION = /^(flow|task|state|common|session|interaction|call|message|email|system|memory|slot|bot|workflow)\./i;
+/** Prompt referenziati come "Prompt.<nome>" */
+const PROMPT_REFERENCE = /^prompt\.(.+)$/i;
+
 interface IdIndexEntry {
   type: ObjectType;
   /** ID originale (con eventuale prefisso, es. custom_-_...) */
@@ -41,6 +52,8 @@ export interface IdIndex {
   byId: Map<string, IdIndexEntry>;
   /** Nome (minuscolo) -> oggetto, solo per i tipi in NAME_REFERENCE_TYPES e solo se il nome è univoco */
   byName: Map<string, IdIndexEntry>;
+  /** Nome (minuscolo) -> tutti gli oggetti con quel nome, di qualunque tipo (usato per i flow) */
+  byNameAll: Map<string, IdIndexEntry[]>;
   /** Tipi che non è stato possibile leggere (permessi o endpoint non disponibile) */
   unreadable: string[];
 }
@@ -55,6 +68,7 @@ export function lazyIdIndex(client: GenesysClient) {
     (index ??= (async () => {
       const byId = new Map<string, IdIndexEntry>();
       const names = new Map<string, IdIndexEntry[]>();
+      const byNameAll = new Map<string, IdIndexEntry[]>();
       const unreadable: string[] = [];
       for (const type of REFERENCE_TYPES) {
         try {
@@ -66,8 +80,9 @@ export function lazyIdIndex(client: GenesysClient) {
               subtype: type === 'flow' ? o.type : undefined,
             };
             byId.set(idKey(entry.id), entry);
+            const k = entry.name.trim().toLowerCase();
+            if (k.length >= MIN_FLOW_NAME_LENGTH) byNameAll.set(k, [...(byNameAll.get(k) ?? []), entry]);
             if (NAME_REFERENCE_TYPES.has(type) && entry.name.length >= MIN_NAME_LENGTH) {
-              const k = entry.name.toLowerCase();
               names.set(k, [...(names.get(k) ?? []), entry]);
             }
           }
@@ -78,7 +93,7 @@ export function lazyIdIndex(client: GenesysClient) {
         }
       }
       const byName = new Map([...names].filter(([, list]) => list.length === 1).map(([k, list]) => [k, list[0]]));
-      return { byId, byName, unreadable };
+      return { byId, byName, byNameAll, unreadable };
     })());
   /** L'indice, solo se è già stato costruito durante l'analisi */
   return Object.assign(get, { peek: () => index });
@@ -95,35 +110,65 @@ interface RawDep {
 /** Dipendenze non leggibili per un motivo noto: il nodo viene mostrato con il messaggio, l'analisi prosegue */
 class DependencyReadError extends Error {}
 
-/** Tutti i valori stringa contenuti in una struttura JSON */
-function stringValues(value: unknown, out = new Set<string>()): Set<string> {
+/**
+ * Tutte le stringhe contenute in una struttura JSON (valori e, se richiesto, anche chiavi:
+ * in alcune azioni Architect il nome dell'oggetto è la chiave del blocco, es. dataAction: { "<nome>": {...} }).
+ */
+function stringValues(value: unknown, includeKeys: boolean, out = new Set<string>()): Set<string> {
   if (typeof value === 'string') out.add(value.trim().toLowerCase());
-  else if (Array.isArray(value)) value.forEach((v) => stringValues(v, out));
-  else if (value && typeof value === 'object') Object.values(value).forEach((v) => stringValues(v, out));
+  else if (Array.isArray(value)) value.forEach((v) => stringValues(v, includeKeys, out));
+  else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) {
+      if (includeKeys) out.add(k.trim().toLowerCase());
+      stringValues(v, includeKeys, out);
+    }
+  }
   return out;
 }
 
 /**
- * Cerca in una configurazione (JSON di uno script, configurazione di un flow) i riferimenti a oggetti dell'org:
+ * Cerca in una configurazione i riferimenti a oggetti dell'org:
  * - per ID, con o senza prefisso (custom_-_<guid> per le data action);
- * - per nome esatto, per i tipi che Architect può referenziare per nome (data action, data table...).
+ * - per nome esatto. Nei flow (mode "flow") i riferimenti sono per nome: valgono tutti i tipi, anche nomi
+ *   brevi e nomi presenti in più tipi, e i prompt nella forma "Prompt.<nome>". Negli script (mode "script")
+ *   solo nomi univoci dei tipi principali, perché lì i nomi compaiono anche come testo libero.
  * Gli ID interni (pagine, componenti, task, azioni, variabili...) e l'oggetto stesso vengono ignorati.
  */
-function scanReferences(value: unknown, index: IdIndex, self: GcObjectRef): RawDep[] {
+function scanReferences(value: unknown, index: IdIndex, self: GcObjectRef, mode: 'flow' | 'script'): RawDep[] {
   const deps = new Map<string, RawDep>();
-  const add = (hit: IdIndexEntry) => {
+  const add = (hit: IdIndexEntry, byName: boolean) => {
     if (idKey(hit.id) === idKey(self.id)) return;
-    deps.set(idKey(hit.id), { type: hit.type, rawType: hit.type.toUpperCase(), id: hit.id, name: hit.name, subtype: hit.subtype });
+    const key = `${hit.type}:${idKey(hit.id)}`;
+    if (deps.has(key)) return;
+    deps.set(key, {
+      type: hit.type,
+      rawType: byName ? `${hit.type.toUpperCase()} (per nome)` : hit.type.toUpperCase(),
+      id: hit.id,
+      name: hit.name,
+      subtype: hit.subtype,
+    });
   };
+
   for (const token of idTokens(JSON.stringify(value))) {
     const hit = index.byId.get(token);
-    if (hit) add(hit);
+    if (hit) add(hit, false);
   }
-  const selfName = self.name.toLowerCase();
-  for (const str of stringValues(value)) {
-    if (str === selfName) continue;
-    const hit = index.byName.get(str);
-    if (hit) add(hit);
+
+  const selfName = self.name.trim().toLowerCase();
+  for (const str of stringValues(value, mode === 'flow')) {
+    if (!str || str === selfName) continue;
+    if (mode === 'script') {
+      const hit = index.byName.get(str);
+      if (hit) add(hit, true);
+      continue;
+    }
+    const prompt = str.match(PROMPT_REFERENCE);
+    if (prompt) {
+      for (const hit of index.byNameAll.get(prompt[1].trim()) ?? []) if (hit.type === 'prompt') add(hit, true);
+      continue;
+    }
+    if (ARCHITECT_EXPRESSION.test(str)) continue;
+    for (const hit of index.byNameAll.get(str) ?? []) add(hit, true);
   }
   return [...deps.values()];
 }
@@ -144,7 +189,7 @@ async function directDependencies(
     case 'script': {
       // Gli script contengono ID in chiaro: si cercano tutti i GUID nel JSON esportato
       // e si riconoscono confrontandoli con gli oggetti dell'org sorgente.
-      return scanReferences(await client.exportScript(obj.id), await idIndex(), obj);
+      return scanReferences(await client.exportScript(obj.id), await idIndex(), obj, 'script');
     }
 
     case 'flow': {
@@ -169,7 +214,7 @@ async function directDependencies(
       // 2. Configurazione del flow: gli ID degli oggetti usati (data action, code, altri flow, prompt...)
       try {
         const configuration = await get(`/api/v2/flows/${obj.id}/latestconfiguration`);
-        deps.push(...scanReferences(configuration, await idIndex(), obj));
+        deps.push(...scanReferences(configuration, await idIndex(), obj, 'flow'));
       } catch (e) {
         if (e instanceof PermissionError) problems.push(e.message);
         else if (e instanceof NotFoundError) problems.push(`Configurazione del flow "${obj.name}" non disponibile (mai pubblicato o salvato?)`);

@@ -448,6 +448,11 @@ export default function PortingPage() {
                       <Typography.Text strong={n.isRoot} type={n.supported ? undefined : 'secondary'}>
                         {name}
                       </Typography.Text>
+                      {n.rawType?.includes('(per nome)') && (
+                        <Tooltip title="Riconosciuto dal nome usato nella configurazione (nei flow i riferimenti sono per nome)">
+                          <Tag color="blue">per nome</Tag>
+                        </Tooltip>
+                      )}
                       {n.repeated && (
                         <Tooltip title="Questo oggetto dipende (anche indirettamente) da un oggetto che lo contiene: il ramo si ferma qui">
                           <Tag>dipendenza circolare</Tag>

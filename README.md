@@ -13,7 +13,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 3. **Porting**:
    - scelta di sorgente e target;
    - elenco degli oggetti del sorgente per tipo (flow, code, skill, wrap-up code, language, data action,
-     integrazioni, schedule, schedule group, prompt, script agente, divisioni) e selezione multipla anche tra tipi diversi;
+     integrazioni, schedule, schedule group, prompt, script agente, data table, emergency group, divisioni) e selezione multipla anche tra tipi diversi;
    - **analisi**: albero delle dipendenze di ogni oggetto, con lo stato sul target per ciascun nodo:
      *Mancante*, *Presente uguale*, *Presente diverso* (con l'elenco dei campi diversi), *Presente*
      (esiste, contenuto non confrontato: i flow);
@@ -36,7 +36,11 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
   dipendenze; il ramo si ferma solo in caso di dipendenza circolare:
   - flow → unione di due fonti: Architect *Dependency Tracking API* (`/api/v2/architect/dependencytracking/object`,
     affidabile solo se Genesys ha già calcolato le dipendenze) e gli ID degli oggetti trovati nella configurazione
-    del flow (`/api/v2/flows/{id}/latestconfiguration`): data action, code, altri flow, prompt, script…;
+    del flow (`/api/v2/flows/{id}/latestconfiguration`): data action, data table, code, altri flow, prompt, script…;
+  - i riferimenti si riconoscono per ID (anche con prefisso, es. `custom_-_<guid>` delle data action) e, per
+    data action, data table, flow, emergency group e schedule group, anche per nome esatto (solo nomi univoci);
+  - nell'albero l'icona `</>` accanto a flow e script apre la configurazione grezza letta da Genesys, utile per
+    capire perché un riferimento non viene riconosciuto;
   - code → in-queue flow, whisper prompt, skill del bullseye, wrap-up code;
   - data action → integrazione; schedule group → schedule;
   - script agente → tutti gli ID presenti nel JSON dello script (data action, code, flow, wrap-up code…),
@@ -132,6 +136,7 @@ Le migrazioni del DB partono da sole all'avvio dell'API.
 - **Dipendenze non gestite** (utenti, gruppi, divisioni, data table, bot…) sono mostrate in analisi ma non portate:
   vanno verificate a mano sul target.
 - **Match per nome**: oggetti con lo stesso nome in divisioni diverse non sono distinti.
+- **Data table**: viene portata la struttura della tabella, non le righe.
 - **Flow**: si porta l'ultima versione pubblicata; la Dependency Tracking API richiede che il flow sia pubblicato.
 - Va validato su org reali il formato dell'export (nomi delle label, riferimenti tra risorse) con la versione
   del provider in uso: la selezione delle risorse è in `worker/exportConfig.ts`.

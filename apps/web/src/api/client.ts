@@ -10,7 +10,9 @@ export type ObjectType =
   | 'schedulegroup'
   | 'prompt'
   | 'division'
-  | 'script';
+  | 'script'
+  | 'datatable'
+  | 'emergencygroup';
 
 export interface DivisionRef {
   id?: string;

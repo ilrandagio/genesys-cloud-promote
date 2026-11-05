@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CATALOG } from '../genesys/catalog.js';
+import { ID_TOKEN_G } from '../genesys/ids.js';
 import type { PortItem } from '../genesys/types.js';
 
 /** Configurazione Terraform in JSON (genesyscloud.tf.json) prodotta da genesyscloud_tf_export */
@@ -12,7 +13,8 @@ export interface TfJson {
   [k: string]: any;
 }
 
-const GUID_G = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+// ID Genesys con eventuale prefisso (custom_-_<guid> per le data action): sostituiti sempre per intero
+const GUID_G = ID_TOKEN_G;
 
 /** Attributi che contengono percorsi o hash di file: gli ID nel nome del file non sono riferimenti */
 const FILE_ATTRIBUTES = new Set(['filepath', 'file_content_hash', 'filename']);

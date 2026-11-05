@@ -43,4 +43,6 @@ export const TYPE_LABELS: Record<string, string> = {
   prompt: 'Prompt',
   division: 'Divisione',
   script: 'Script agente',
+  datatable: 'Data table',
+  emergencygroup: 'Emergency group',
 };

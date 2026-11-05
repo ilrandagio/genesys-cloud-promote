@@ -84,6 +84,20 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     // Il contenuto (pagine, componenti) non è nella risposta di dettaglio: si confronta solo l'esistenza
     comparable: false,
   },
+  datatable: {
+    label: 'Data table',
+    listPath: '/api/v2/flows/datatables',
+    getPath: '/api/v2/flows/datatables/{id}?expand=schema',
+    tfType: 'genesyscloud_architect_datatable',
+    comparable: true,
+  },
+  emergencygroup: {
+    label: 'Emergency group',
+    listPath: '/api/v2/architect/emergencygroups',
+    getPath: '/api/v2/architect/emergencygroups/{id}',
+    tfType: 'genesyscloud_architect_emergencygroup',
+    comparable: true,
+  },
   division: {
     label: 'Divisione',
     listPath: '/api/v2/authorization/divisions',
@@ -123,6 +137,10 @@ export function fromDependencyType(dtType: string): ObjectType | undefined {
     case 'SCRIPT':
     case 'COMPOSERSCRIPT':
       return 'script';
+    case 'DATATABLE':
+      return 'datatable';
+    case 'EMERGENCYGROUP':
+      return 'emergencygroup';
     default:
       return dtType.endsWith('FLOW') || dtType === 'WORKFLOW' ? 'flow' : undefined;
   }

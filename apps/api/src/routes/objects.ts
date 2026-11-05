@@ -40,6 +40,24 @@ export async function objectRoutes(app: FastifyInstance) {
   });
 
   /**
+   * Diagnostica: contenuto grezzo dell'oggetto sul sorgente, cioè il testo in cui l'analisi cerca i riferimenti
+   * (flow: latestconfiguration; script: JSON esportato; altri tipi: dettaglio).
+   */
+  app.get('/api/environments/:envId/objects/:type/:id/raw', async (req, reply) => {
+    const { envId, type, id } = z
+      .object({ envId: z.string(), type: z.enum(OBJECT_TYPES), id: z.string() })
+      .parse(req.params);
+    const client = await clientFor(envId);
+    const content =
+      type === 'flow'
+        ? await client.get(`/api/v2/flows/${encodeURIComponent(id)}/latestconfiguration`)
+        : type === 'script'
+          ? await client.exportScript(id)
+          : await client.get(CATALOG[type as ObjectType].getPath.replace('{id}', encodeURIComponent(id)));
+    return reply.header('Content-Type', 'application/json; charset=utf-8').send(JSON.stringify(content, null, 2));
+  });
+
+  /**
    * Analisi: per ogni oggetto selezionato costruisce l'albero delle dipendenze sul sorgente
    * e marca ogni nodo con lo stato sul target.
    */
@@ -66,6 +84,14 @@ export async function objectRoutes(app: FastifyInstance) {
       await comparer.annotate(tree);
       trees.push(tree);
     }
-    return { trees };
+    const built = idIndex.peek();
+    const unreadable = built ? (await built).unreadable : [];
+    const warnings = unreadable.length
+      ? [
+          `Tipi di oggetto non leggibili dal client OAuth del sorgente: ${unreadable.join(', ')}. ` +
+            `I riferimenti a questi oggetti in flow e script non possono essere riconosciuti.`,
+        ]
+      : [];
+    return { trees, warnings };
   });
 }

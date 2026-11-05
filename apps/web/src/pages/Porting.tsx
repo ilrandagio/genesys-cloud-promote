@@ -1,4 +1,4 @@
-import { ArrowRightOutlined, BranchesOutlined, ExclamationCircleFilled, ExperimentOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, BranchesOutlined, CodeOutlined, ExclamationCircleFilled, ExperimentOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -34,7 +34,7 @@ import { TargetStatusTag, TYPE_LABELS } from '../components/StatusTag';
 const keyOf = (o: { type: string; id: string }) => `${o.type}:${o.id}`;
 
 /** Tipi che in Genesys Cloud possono appartenere a una divisione */
-const DIVISIONED = new Set<ObjectType>(['flow', 'queue', 'schedule', 'schedulegroup', 'wrapupcode', 'script']);
+const DIVISIONED = new Set<ObjectType>(['flow', 'queue', 'schedule', 'schedulegroup', 'wrapupcode', 'script', 'datatable', 'emergencygroup']);
 
 interface TreeRow extends Omit<DependencyNode, 'children'> {
   rowKey: string;
@@ -74,6 +74,7 @@ export default function PortingPage() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Map<string, GcObject>>(new Map());
   const [trees, setTrees] = useState<DependencyNode[]>();
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [actions, setActions] = useState<Map<string, PortAction>>(new Map());
   const [analyzing, setAnalyzing] = useState(false);
   const [includeDivisions, setIncludeDivisions] = useState(false);
@@ -105,7 +106,7 @@ export default function PortingPage() {
   const analyze = async () => {
     setAnalyzing(true);
     try {
-      const res = await api<{ trees: DependencyNode[] }>('/api/analyze', {
+      const res = await api<{ trees: DependencyNode[]; warnings?: string[] }>('/api/analyze', {
         method: 'POST',
         body: {
           sourceEnvId: sourceId,
@@ -122,6 +123,7 @@ export default function PortingPage() {
       res.trees.forEach((t) => walk(t, true));
       setActions(acts);
       setTrees(res.trees);
+      setWarnings(res.warnings ?? []);
     } catch (e) {
       message.error((e as Error).message);
     } finally {
@@ -406,6 +408,9 @@ export default function PortingPage() {
                 message={`${counts.missingSkipped} dipendenze mancanti sul target sono impostate su "Salta": gli oggetti che le usano potrebbero fallire.`}
               />
             )}
+            {warnings.map((w) => (
+              <Alert key={w} type="warning" showIcon message={w} />
+            ))}
             {readErrors.length > 0 && (
               <Alert
                 type="error"
@@ -451,6 +456,17 @@ export default function PortingPage() {
                       {n.error && (
                         <Tooltip title={n.error}>
                           <ExclamationCircleFilled style={{ color: '#ff4d4f' }} />
+                        </Tooltip>
+                      )}
+                      {n.supported && (n.type === 'flow' || n.type === 'script') && (
+                        <Tooltip title="Configurazione letta da Genesys (dove l'analisi cerca i riferimenti)">
+                          <a
+                            href={`/api/environments/${sourceId}/objects/${n.type}/${encodeURIComponent(n.id)}/raw`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <CodeOutlined />
+                          </a>
                         </Tooltip>
                       )}
                     </Space>

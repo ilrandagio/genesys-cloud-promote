@@ -1,14 +1,14 @@
 import { CATALOG, flowDependencyType, fromDependencyType } from './catalog.js';
 import { GenesysClient, NotFoundError, PermissionError } from './client.js';
+import { idKey, idTokens } from './ids.js';
 import { DIVISIONED_TYPES, toDivision, type DependencyNode, type GcObjectRef, type ObjectType } from './types.js';
 
 type Get = (path: string) => Promise<any>;
 
-const GUID_G = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-
-/** Tipi che uno script può referenziare per ID (data action, code, flow, wrap-up...) */
-const SCRIPT_REFERENCE_TYPES: ObjectType[] = [
+/** Tipi che una configurazione (script, flow) può referenziare */
+const REFERENCE_TYPES: ObjectType[] = [
   'dataaction',
+  'datatable',
   'queue',
   'flow',
   'wrapupcode',
@@ -17,37 +17,71 @@ const SCRIPT_REFERENCE_TYPES: ObjectType[] = [
   'prompt',
   'schedule',
   'schedulegroup',
+  'emergencygroup',
   'integration',
   'script',
 ];
 
+/**
+ * Tipi che possono essere referenziati anche per nome (es. data action e data table nelle azioni
+ * Architect). Il match è sul valore esatto di una stringa, solo per nomi univoci di almeno 4 caratteri.
+ */
+const NAME_REFERENCE_TYPES = new Set<ObjectType>(['dataaction', 'datatable', 'flow', 'emergencygroup', 'schedulegroup']);
+const MIN_NAME_LENGTH = 4;
+
 interface IdIndexEntry {
   type: ObjectType;
+  /** ID originale (con eventuale prefisso, es. custom_-_...) */
+  id: string;
   name: string;
   subtype?: string;
 }
 
+export interface IdIndex {
+  byId: Map<string, IdIndexEntry>;
+  /** Nome (minuscolo) -> oggetto, solo per i tipi in NAME_REFERENCE_TYPES e solo se il nome è univoco */
+  byName: Map<string, IdIndexEntry>;
+  /** Tipi che non è stato possibile leggere (permessi o endpoint non disponibile) */
+  unreadable: string[];
+}
+
 /**
- * Indice ID -> oggetto dell'org sorgente, costruito una sola volta per analisi
- * (solo se serve, cioè quando si incontra uno script). I tipi non leggibili per permessi vengono saltati.
+ * Indice degli oggetti dell'org sorgente, costruito una sola volta per analisi
+ * e solo se serve (quando si incontra uno script o un flow). I tipi non leggibili vengono saltati.
  */
 export function lazyIdIndex(client: GenesysClient) {
-  let index: Promise<Map<string, IdIndexEntry>> | undefined;
-  return () =>
+  let index: Promise<IdIndex> | undefined;
+  const get = () =>
     (index ??= (async () => {
-      const map = new Map<string, IdIndexEntry>();
-      for (const type of SCRIPT_REFERENCE_TYPES) {
+      const byId = new Map<string, IdIndexEntry>();
+      const names = new Map<string, IdIndexEntry[]>();
+      const unreadable: string[] = [];
+      for (const type of REFERENCE_TYPES) {
         try {
           for (const o of await client.listAll(CATALOG[type].listPath)) {
-            map.set(String(o.id).toLowerCase(), { type, name: o.name ?? o.id, subtype: type === 'flow' ? o.type : undefined });
+            const entry: IdIndexEntry = {
+              type,
+              id: String(o.id),
+              name: o.name ?? String(o.id),
+              subtype: type === 'flow' ? o.type : undefined,
+            };
+            byId.set(idKey(entry.id), entry);
+            if (NAME_REFERENCE_TYPES.has(type) && entry.name.length >= MIN_NAME_LENGTH) {
+              const k = entry.name.toLowerCase();
+              names.set(k, [...(names.get(k) ?? []), entry]);
+            }
           }
         } catch (e) {
           // Un tipo non leggibile (permessi, endpoint non disponibile) non deve far perdere gli altri
           if (!(e instanceof PermissionError) && !(e instanceof NotFoundError)) throw e;
+          unreadable.push(CATALOG[type].label);
         }
       }
-      return map;
+      const byName = new Map([...names].filter(([, list]) => list.length === 1).map(([k, list]) => [k, list[0]]));
+      return { byId, byName, unreadable };
     })());
+  /** L'indice, solo se è già stato costruito durante l'analisi */
+  return Object.assign(get, { peek: () => index });
 }
 
 interface RawDep {
@@ -61,19 +95,37 @@ interface RawDep {
 /** Dipendenze non leggibili per un motivo noto: il nodo viene mostrato con il messaggio, l'analisi prosegue */
 class DependencyReadError extends Error {}
 
+/** Tutti i valori stringa contenuti in una struttura JSON */
+function stringValues(value: unknown, out = new Set<string>()): Set<string> {
+  if (typeof value === 'string') out.add(value.trim().toLowerCase());
+  else if (Array.isArray(value)) value.forEach((v) => stringValues(v, out));
+  else if (value && typeof value === 'object') Object.values(value).forEach((v) => stringValues(v, out));
+  return out;
+}
+
 /**
- * Cerca nel contenuto (JSON di uno script o configurazione di un flow) gli ID che corrispondono
- * a oggetti dell'org. Gli ID interni (pagine, componenti, azioni, variabili...) e l'ID dell'oggetto
- * stesso vengono ignorati.
+ * Cerca in una configurazione (JSON di uno script, configurazione di un flow) i riferimenti a oggetti dell'org:
+ * - per ID, con o senza prefisso (custom_-_<guid> per le data action);
+ * - per nome esatto, per i tipi che Architect può referenziare per nome (data action, data table...).
+ * Gli ID interni (pagine, componenti, task, azioni, variabili...) e l'oggetto stesso vengono ignorati.
  */
-function scanReferences(content: string, index: Map<string, IdIndexEntry>, selfId: string): RawDep[] {
-  const deps: RawDep[] = [];
-  for (const guid of new Set((content.match(GUID_G) ?? []).map((g) => g.toLowerCase()))) {
-    if (guid === selfId.toLowerCase()) continue;
-    const hit = index.get(guid);
-    if (hit) deps.push({ type: hit.type, rawType: hit.type.toUpperCase(), id: guid, name: hit.name, subtype: hit.subtype });
+function scanReferences(value: unknown, index: IdIndex, self: GcObjectRef): RawDep[] {
+  const deps = new Map<string, RawDep>();
+  const add = (hit: IdIndexEntry) => {
+    if (idKey(hit.id) === idKey(self.id)) return;
+    deps.set(idKey(hit.id), { type: hit.type, rawType: hit.type.toUpperCase(), id: hit.id, name: hit.name, subtype: hit.subtype });
+  };
+  for (const token of idTokens(JSON.stringify(value))) {
+    const hit = index.byId.get(token);
+    if (hit) add(hit);
   }
-  return deps;
+  const selfName = self.name.toLowerCase();
+  for (const str of stringValues(value)) {
+    if (str === selfName) continue;
+    const hit = index.byName.get(str);
+    if (hit) add(hit);
+  }
+  return [...deps.values()];
 }
 
 /**
@@ -86,14 +138,13 @@ async function directDependencies(
   client: GenesysClient,
   get: Get,
   obj: GcObjectRef,
-  idIndex: () => Promise<Map<string, IdIndexEntry>>,
+  idIndex: () => Promise<IdIndex>,
 ): Promise<RawDep[]> {
   switch (obj.type) {
     case 'script': {
       // Gli script contengono ID in chiaro: si cercano tutti i GUID nel JSON esportato
       // e si riconoscono confrontandoli con gli oggetti dell'org sorgente.
-      const content = JSON.stringify(await client.exportScript(obj.id));
-      return scanReferences(content, await idIndex(), obj.id);
+      return scanReferences(await client.exportScript(obj.id), await idIndex(), obj);
     }
 
     case 'flow': {
@@ -118,7 +169,7 @@ async function directDependencies(
       // 2. Configurazione del flow: gli ID degli oggetti usati (data action, code, altri flow, prompt...)
       try {
         const configuration = await get(`/api/v2/flows/${obj.id}/latestconfiguration`);
-        deps.push(...scanReferences(JSON.stringify(configuration), await idIndex(), obj.id));
+        deps.push(...scanReferences(configuration, await idIndex(), obj));
       } catch (e) {
         if (e instanceof PermissionError) problems.push(e.message);
         else if (e instanceof NotFoundError) problems.push(`Configurazione del flow "${obj.name}" non disponibile (mai pubblicato o salvato?)`);

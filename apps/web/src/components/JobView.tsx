@@ -12,6 +12,7 @@ const CHANGE_LABEL: Record<string, { color: string; label: string }> = {
   create: { color: 'green', label: 'crea' },
   update: { color: 'blue', label: 'aggiorna' },
   delete: { color: 'red', label: 'cancella' },
+  'no-op': { color: 'default', label: 'già uguale' },
 };
 const describeActions = (actions: string[]) =>
   actions.includes('delete') && actions.includes('create')
@@ -217,12 +218,16 @@ export default function JobView({
             <Tag color="blue">{summary.change} da aggiornare</Tag>
             {summary.destroy > 0 && <Tag color="red">{summary.destroy} da cancellare</Tag>}
             {summary.replace > 0 && <Tag color="red">{summary.replace} da ricreare</Tag>}
+            {!!summary.unchanged?.length && <Tag>{summary.unchanged.length} già uguali sul target</Tag>}
           </Space>
           <Table
             size="small"
             rowKey="address"
             pagination={false}
-            dataSource={summary.changes}
+            dataSource={[
+              ...summary.changes,
+              ...(summary.unchanged ?? []).map((address) => ({ address, actions: ['no-op'] })),
+            ]}
             columns={[
               { title: 'Risorsa', dataIndex: 'address', render: (a: string) => <Typography.Text code>{a}</Typography.Text> },
               {

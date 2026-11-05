@@ -14,6 +14,8 @@ export interface PlanSummary {
   destroy: number;
   replace: number;
   changes: { address: string; actions: string[] }[];
+  /** Risorse del plan già uguali sul target: nessuna modifica (assente nei plan meno recenti) */
+  unchanged?: string[];
 }
 
 /** Un'organizzazione Genesys Cloud (dev, test, prod...) con il proprio OAuth client. */

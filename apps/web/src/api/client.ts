@@ -143,6 +143,8 @@ export interface PlanSummary {
   destroy: number;
   replace: number;
   changes: { address: string; actions: string[] }[];
+  /** Risorse del plan già uguali sul target: nessuna modifica (assente nei plan meno recenti) */
+  unchanged?: string[];
 }
 
 export type PlanStateName = 'running' | 'failed' | 'blocked' | 'applied' | 'expired' | 'awaiting_approval' | 'ready';

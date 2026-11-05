@@ -11,10 +11,14 @@ export interface PlanJson {
 const isReplace = (a: string[]) => a.includes('delete') && a.includes('create');
 
 export function summarize(plan: PlanJson): PlanSummary {
-  const summary: PlanSummary = { add: 0, change: 0, destroy: 0, replace: 0, changes: [] };
+  const summary: PlanSummary = { add: 0, change: 0, destroy: 0, replace: 0, changes: [], unchanged: [] };
   for (const rc of plan.resource_changes ?? []) {
     const actions = rc.change.actions;
-    if (actions.every((a) => a === 'no-op' || a === 'read')) continue;
+    if (actions.every((a) => a === 'no-op' || a === 'read')) {
+      // Oggetto scelto ma già identico sul target: va mostrato, altrimenti sembra sparito dal plan
+      if (actions.includes('no-op')) summary.unchanged!.push(rc.address);
+      continue;
+    }
     if (isReplace(actions)) summary.replace++;
     else if (actions.includes('create')) summary.add++;
     else if (actions.includes('update')) summary.change++;

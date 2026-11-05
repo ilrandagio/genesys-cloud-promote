@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Col,
+  Drawer,
   Empty,
   Input,
   Row,
@@ -29,7 +30,9 @@ import {
   type PortAction,
   type PortItem,
 } from '../api/client';
+import JobView from '../components/JobView';
 import { flowTypeLabel, TargetStatusTag, typeLabel } from '../components/StatusTag';
+import { mapCodec, useSessionState } from '../hooks/useSessionState';
 
 const keyOf = (o: { type: string; id: string }) => `${o.type}:${o.id}`;
 
@@ -68,16 +71,20 @@ export default function PortingPage() {
   const { message, modal } = App.useApp();
   const navigate = useNavigate();
 
-  const [sourceId, setSourceId] = useState<string>();
-  const [targetId, setTargetId] = useState<string>();
-  const [type, setType] = useState<ObjectType>('flow');
+  // Selezione, analisi e azioni restano salvate nella sessione: cambiare pagina o aprire il plan non le perde
+  const [sourceId, setSourceId] = useSessionState<string | undefined>('sourceId', undefined);
+  const [targetId, setTargetId] = useSessionState<string | undefined>('targetId', undefined);
+  const [type, setType] = useSessionState<ObjectType>('type', 'flow');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Map<string, GcObject>>(new Map());
-  const [trees, setTrees] = useState<DependencyNode[]>();
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [actions, setActions] = useState<Map<string, PortAction>>(new Map());
+  const [selected, setSelected] = useSessionState<Map<string, GcObject>>('selected', new Map(), mapCodec());
+  const [trees, setTrees] = useSessionState<DependencyNode[] | undefined>('trees', undefined);
+  const [warnings, setWarnings] = useSessionState<string[]>('warnings', []);
+  const [actions, setActions] = useSessionState<Map<string, PortAction>>('actions', new Map(), mapCodec());
+  const [includeDivisions, setIncludeDivisions] = useSessionState('includeDivisions', false);
+  /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
+  const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>('plan', undefined);
+  const [planOpen, setPlanOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [includeDivisions, setIncludeDivisions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const envs = useQuery({ queryKey: ['environments'], queryFn: () => api<Environment[]>('/api/environments') });
@@ -99,6 +106,8 @@ export default function PortingPage() {
   const resetAnalysis = () => {
     setTrees(undefined);
     setActions(new Map());
+    setWarnings([]);
+    setPlan(undefined);
   };
 
   const step = !sourceId || !targetId ? 0 : !trees ? 1 : 2;
@@ -124,6 +133,7 @@ export default function PortingPage() {
       setActions(acts);
       setTrees(res.trees);
       setWarnings(res.warnings ?? []);
+      setPlan(undefined);
     } catch (e) {
       message.error((e as Error).message);
     } finally {
@@ -151,6 +161,18 @@ export default function PortingPage() {
     trees?.forEach(walk);
     return [...out.values()];
   }, [trees, actions]);
+
+  /** Impronta delle scelte correnti: se cambia dopo la simulazione, il plan non corrisponde più */
+  const fingerprint = useMemo(
+    () =>
+      JSON.stringify([
+        sourceId,
+        targetId,
+        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '']),
+      ]),
+    [sourceId, targetId, items],
+  );
+  const planIsCurrent = !!plan && plan.fingerprint === fingerprint;
 
   const counts = {
     port: items.filter((i) => i.action === 'port').length,
@@ -187,7 +209,13 @@ export default function PortingPage() {
           method: 'POST',
           body: { sourceEnvId: sourceId, targetEnvId: targetId, mode, items },
         });
-        navigate(`/jobs/${job.id}`);
+        if (mode === 'PLAN') {
+          // La simulazione si apre di lato: selezione e albero restano dove sono
+          setPlan({ jobId: job.id, fingerprint });
+          setPlanOpen(true);
+        } else {
+          navigate(`/jobs/${job.id}`);
+        }
       } catch (e) {
         message.error((e as Error).message);
       } finally {
@@ -379,6 +407,14 @@ export default function PortingPage() {
           title="3. Dipendenze e stato sul target"
           extra={
             <Space>
+              {plan &&
+                (planIsCurrent ? (
+                  <Button onClick={() => setPlanOpen(true)}>Vedi simulazione</Button>
+                ) : (
+                  <Tooltip title="Dopo la simulazione sono cambiate le scelte: rifai la simulazione per vedere il piano aggiornato">
+                    <Tag color="orange">simulazione non più valida</Tag>
+                  </Tooltip>
+                ))}
               <Button icon={<ExperimentOutlined />} loading={submitting} disabled={!counts.port} onClick={() => submit('PLAN')}>
                 Simula (plan)
               </Button>
@@ -549,6 +585,27 @@ export default function PortingPage() {
           </Space>
         </Card>
       )}
+
+      <Drawer
+        title="Simulazione"
+        width={960}
+        open={planOpen && !!plan}
+        onClose={() => setPlanOpen(false)}
+        destroyOnHidden
+      >
+        {plan && (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {!planIsCurrent && (
+              <Alert
+                type="warning"
+                showIcon
+                message="Le scelte sono cambiate dopo questa simulazione: il porting eseguito da qui userebbe le scelte della simulazione, non quelle attuali."
+              />
+            )}
+            <JobView compact id={plan.jobId} onApplied={(applyId) => navigate(`/jobs/${applyId}`)} />
+          </Space>
+        )}
+      </Drawer>
     </Space>
   );
 }

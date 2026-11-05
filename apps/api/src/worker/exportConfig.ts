@@ -143,8 +143,9 @@ export async function remapReferencedFiles(
   baseDir: string,
   targetIds: Map<string, string>,
   sameJobRefs: Map<string, string>,
-): Promise<{ file: string; replaced: number; placeholders: number }[]> {
+): Promise<{ report: { file: string; replaced: number; placeholders: number }[]; missingFiles: string[] }> {
   const report: { file: string; replaced: number; placeholders: number }[] = [];
+  const missingFiles: string[] = [];
   // ID sorgente della risorsa stessa: dentro il proprio file non va mai sostituito
   const ownIdOf = new Map([...sameJobRefs].map(([id, addr]) => [addr, id]));
   const placeholderOf = new Map<string, string>();
@@ -155,12 +156,14 @@ export async function remapReferencedFiles(
       const ownId = ownIdOf.get(`${type}.${label}`);
       const filepath: unknown = attrs?.filepath;
       if (typeof filepath !== 'string' || filepath.includes('${')) continue;
-      const abs = path.resolve(baseDir, filepath);
+      // L'export può scrivere i percorsi con "\\" (Windows): normalizzati per funzionare su ogni sistema
+      const abs = path.resolve(baseDir, ...filepath.split(/[\\/]+/));
       let content: string;
       try {
         content = await readFile(abs, 'utf8');
       } catch {
-        continue; // file non presente: lo segnalerà Terraform
+        missingFiles.push(filepath);
+        continue;
       }
 
       let replaced = 0;
@@ -195,5 +198,5 @@ export async function remapReferencedFiles(
       report.push({ file: filepath, replaced, placeholders });
     }
   }
-  return report;
+  return { report, missingFiles };
 }

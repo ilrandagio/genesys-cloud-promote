@@ -142,7 +142,8 @@ export async function runPortingJob(jobId: string) {
     cfg = remapConfig(cfg, targetIds, sameJobRefs);
 
     // File esportati (JSON degli script, YAML dei flow): ID scritti in chiaro nel contenuto
-    const fileReport = await remapReferencedFiles(cfg, exportDir, targetIds, sameJobRefs);
+    const { report: fileReport, missingFiles } = await remapReferencedFiles(cfg, exportDir, targetIds, sameJobRefs);
+    for (const f of missingFiles) log.info(`ATTENZIONE: file esportato non trovato, ID non sostituiti: ${f}`);
     for (const r of fileReport) {
       log.info(
         `ID sostituiti in ${r.file}: ${r.replaced} con ID del target` +

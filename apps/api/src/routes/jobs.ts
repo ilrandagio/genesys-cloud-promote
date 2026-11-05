@@ -74,6 +74,34 @@ export async function jobRoutes(app: FastifyInstance) {
     return job;
   });
 
+  /**
+   * Esegue il porting di una simulazione completata: il job APPLY viene creato copiando sorgente, target,
+   * oggetti e azioni salvati nel plan, così ciò che viene scritto corrisponde a ciò che è stato simulato.
+   */
+  app.post('/api/jobs/:id/apply', async (req) => {
+    const { id } = req.params as { id: string };
+    const [plan] = await db.select().from(j).where(eq(j.id, id));
+    if (!plan) throw new HttpError(404, 'Simulazione non trovata');
+    if (plan.mode !== 'PLAN') throw new HttpError(400, 'Il job indicato non è una simulazione');
+    if (plan.status !== 'SUCCEEDED') throw new HttpError(400, 'Si può eseguire solo una simulazione completata con successo');
+    const target = await getEnvironment(plan.targetEnvId);
+    if (!target.allowAsTarget) throw new HttpError(400, `${target.name} non è abilitato come target`);
+
+    const [job] = await db
+      .insert(j)
+      .values({
+        mode: 'APPLY',
+        sourceEnvId: plan.sourceEnvId,
+        targetEnvId: plan.targetEnvId,
+        items: plan.items,
+        createdBy: (req.user as { sub: string }).sub,
+        log: `[porting] Porting della simulazione ${plan.id} del ${plan.createdAt.toISOString()} (stessi oggetti e azioni)\n`,
+      })
+      .returning();
+    await enqueuePorting(job.id);
+    return job;
+  });
+
   app.get('/api/jobs', async () =>
     db
       .select(summaryFields)

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Genesys Cloud Promote</title>
+  <rect width="64" height="64" rx="14" fill="#1677ff"/>
+  <!-- Freccia verso l'alto: promozione da un ambiente al successivo -->
+  <path d="M32 12 L50 32 H39 V52 H25 V32 H14 Z" fill="#ffffff"/>
+</svg>

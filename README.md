@@ -70,7 +70,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 
 ## Architettura
 
-Documento architetturale completo: [doc/architettura.md](doc/architettura.md).
+Documento architetturale completo: [doc/architettura.md](doc/architettura.md), anche in Word ([doc/architettura.docx](doc/architettura.docx), rigenerabile con `python3 scripts/build-doc-docx.py`).
 
 
 ```

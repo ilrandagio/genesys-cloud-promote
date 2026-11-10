@@ -70,6 +70,9 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 
 ## Architettura
 
+Documento architetturale completo: [doc/architettura.md](doc/architettura.md).
+
+
 ```
 apps/web   React + Vite + Ant Design + TanStack Query
 apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)

@@ -39,6 +39,8 @@ import { mapCodec, useSessionState } from '../hooks/useSessionState';
 
 const keyOf = (o: { type: string; id: string }) => `${o.type}:${o.id}`;
 
+const NO_DIVISION = '__none__';
+
 /** Tipi che in Genesys Cloud possono appartenere a una divisione */
 const DIVISIONED = new Set<ObjectType>(['flow', 'queue', 'schedule', 'schedulegroup', 'wrapupcode', 'script', 'datatable', 'emergencygroup',
   'campaign', 'messagingcampaign', 'contactlist', 'contactlistfilter', 'dnclist', 'callanalysisresponseset', 'ruleset', 'campaignrule', 'callabletimeset', 'responseasset']);
@@ -109,6 +111,8 @@ export default function PortingPage() {
   const [targetId, setTargetId] = useSessionState<string | undefined>('targetId', undefined);
   const [type, setType] = useSessionState<ObjectType>('type', 'flow');
   const [search, setSearch] = useState('');
+  /** Filtro per divisione (valori = nomi; NO_DIVISION = oggetti senza divisione) */
+  const [divisionFilter, setDivisionFilter] = useState<string[]>([]);
   const [selected, setSelected] = useSessionState<Map<string, GcObject>>('selected', new Map(), mapCodec());
   const [trees, setTrees] = useSessionState<DependencyNode[] | undefined>('trees', undefined);
   const [warnings, setWarnings] = useSessionState<string[]>('warnings', []);
@@ -137,10 +141,15 @@ export default function PortingPage() {
   // "Solo selezionati": gli oggetti selezionati di tutti i tipi, altrimenti quelli del tipo corrente
   const filtered = useMemo(
     () =>
-      (onlySelected ? [...selected.values()] : (objects.data ?? [])).filter((o) =>
-        o.name.toLowerCase().includes(search.toLowerCase()),
+      (onlySelected ? [...selected.values()] : (objects.data ?? [])).filter(
+        (o) =>
+          o.name.toLowerCase().includes(search.toLowerCase()) &&
+          // Il filtro vale solo quando è visibile (tipi con divisione o "Solo selezionati")
+          (!divisionFilter.length ||
+            !(onlySelected || DIVISIONED.has(type)) ||
+            divisionFilter.includes(o.division ?? NO_DIVISION)),
       ),
-    [objects.data, search, onlySelected, selected],
+    [objects.data, search, onlySelected, selected, divisionFilter, type],
   );
 
   const resetAnalysis = () => {
@@ -429,6 +438,7 @@ export default function PortingPage() {
                 onChange={(v) => {
                   setType(v);
                   setSearch('');
+                  setDivisionFilter([]);
                 }}
                 showSearch
                 optionFilterProp="label"
@@ -443,6 +453,31 @@ export default function PortingPage() {
             <Col flex="auto">
               <Input.Search placeholder="Cerca per nome" allowClear value={search} onChange={(e) => setSearch(e.target.value)} />
             </Col>
+            {(onlySelected || DIVISIONED.has(type)) && (
+              <Col>
+                <Select<string[]>
+                  mode="multiple"
+                  allowClear
+                  style={{ width: 280 }}
+                  maxTagCount="responsive"
+                  placeholder="Filtra per divisione"
+                  value={divisionFilter}
+                  onChange={setDivisionFilter}
+                  options={[
+                    ...[
+                      ...new Set(
+                        (onlySelected ? [...selected.values()] : (objects.data ?? []))
+                          .map((o) => o.division)
+                          .filter((d): d is string => !!d),
+                      ),
+                    ]
+                      .sort((a, b) => a.localeCompare(b))
+                      .map((d) => ({ value: d, label: d })),
+                    { value: NO_DIVISION, label: 'Nessuna divisione' },
+                  ]}
+                />
+              </Col>
+            )}
           </Row>
           {selected.size > 0 && (
             <div style={{ margin: '12px 0' }}>

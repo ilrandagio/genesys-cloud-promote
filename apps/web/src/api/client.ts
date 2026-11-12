@@ -77,6 +77,8 @@ export interface DependencyNode {
   subtype?: string;
   rawType?: string;
   supported: boolean;
+  /** Oggetto contenuto nel padre (es. Canned Response di una Library): nell'ordine di creazione viene dopo il padre */
+  contained?: boolean;
   repeated?: boolean;
   error?: string;
   division?: DivisionRef;

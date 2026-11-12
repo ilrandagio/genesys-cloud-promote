@@ -123,6 +123,7 @@ L'analisi legge direttamente la Platform API (nessuno stato, nessuna scrittura) 
 | Queue | In-queue Flow, Whisper Prompt, ACD Skills del bullseye, Wrap-up Codes |
 | Data Action | Integration |
 | Schedule Group | Schedule |
+| Canned Response Library | Le sue Canned Responses, come oggetti *contenuti*: sono loro a usare la Library, quindi nell'ordine di creazione vengono dopo |
 
 **Riconoscimento dei riferimenti.** Nel testo di una configurazione si cercano:
 

@@ -130,6 +130,8 @@ interface RawDep {
   id: string;
   name: string;
   subtype?: string;
+  /** Oggetto contenuto (es. Canned Response di una Library): è lui a usare il padre, non il contrario */
+  contained?: boolean;
 }
 
 /** Dipendenze non leggibili per un motivo noto: il nodo viene mostrato con il messaggio, l'analisi prosegue */
@@ -214,6 +216,19 @@ async function directDependencies(
   idIndex: () => Promise<IdIndex>,
 ): Promise<RawDep[]> {
   switch (obj.type) {
+    case 'responselibrary': {
+      // Una Library non cita le sue Responses: sono le Responses a indicare la Library. Si elencano quindi
+      // le Responses della Library, come oggetti contenuti, più eventuali riferimenti nel dettaglio
+      const own = scanReferences(await get(CATALOG.responselibrary.getPath.replace('{id}', obj.id)), await idIndex(), obj, 'id');
+      const responses = await client.listAll<{ id: string; name: string }>(
+        `/api/v2/responsemanagement/responses?libraryId=${encodeURIComponent(obj.id)}`,
+      );
+      return [
+        ...own,
+        ...responses.map((r) => ({ type: 'response' as const, rawType: 'RESPONSE', id: r.id, name: r.name, contained: true })),
+      ];
+    }
+
     case 'script': {
       // Gli script contengono ID in chiaro: si cercano tutti i GUID nel JSON esportato
       // e si riconoscono confrontandoli con gli oggetti dell'org sorgente.
@@ -395,7 +410,18 @@ export async function buildDependencyTree(
         node.children.push({ type: 'flow', id: d.id, name: d.name, rawType: d.rawType, supported: false, children: [] });
         continue;
       }
-      node.children.push(await visit({ type: d.type, id: d.id, name: d.name, subtype: d.subtype }, d.rawType, depth + 1, path));
+      const child = await visit({ type: d.type, id: d.id, name: d.name, subtype: d.subtype }, d.rawType, depth + 1, path);
+      // Copia: il nodo può essere in cache e altrove non è "contenuto"
+      // Il riferimento del contenuto al suo contenitore non è una dipendenza circolare: si omette
+      node.children.push(
+        d.contained
+          ? {
+              ...child,
+              contained: true,
+              children: child.children.filter((c) => !(c.repeated && c.type === obj.type && c.id.toLowerCase() === obj.id.toLowerCase())),
+            }
+          : child,
+      );
     }
     built.set(key, node);
     return node;

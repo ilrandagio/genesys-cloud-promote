@@ -264,7 +264,8 @@ export default function PortingPage() {
     const walk = (n: DependencyNode) => {
       for (const c of n.children) {
         if (n.supported && c.supported && !c.repeated) {
-          const e = { from: keyOf(n), to: keyOf(c) };
+          // Oggetto contenuto (Response di una Library): è il figlio a usare il padre
+          const e = c.contained ? { from: keyOf(c), to: keyOf(n) } : { from: keyOf(n), to: keyOf(c) };
           out.set(`${e.from}>${e.to}`, e);
         }
         if (!c.repeated) walk(c);
@@ -661,6 +662,11 @@ export default function PortingPage() {
                       {n.rawType?.includes('(per nome)') && (
                         <Tooltip title="Riconosciuto dal nome usato nella configurazione (nei flow i riferimenti sono per nome)">
                           <Tag color="blue">per nome</Tag>
+                        </Tooltip>
+                      )}
+                      {n.contained && (
+                        <Tooltip title="Contenuto nell'oggetto padre (es. Canned Response di una Library): viene creato dopo il padre">
+                          <Tag color="purple">contenuto</Tag>
                         </Tooltip>
                       )}
                       {n.repeated && (

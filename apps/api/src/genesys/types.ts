@@ -117,6 +117,8 @@ export interface DependencyNode extends GcObjectRef {
   target?: TargetInfo;
   children: DependencyNode[];
   /** true se l'oggetto è già un antenato in questo ramo: dipendenza circolare, il ramo si ferma qui */
+  /** Oggetto contenuto nel padre (es. Canned Response di una Library): nell'ordine di creazione viene dopo il padre */
+  contained?: boolean;
   repeated?: boolean;
   /** Divisione sul sorgente (solo per i tipi che prevedono le divisioni) */
   division?: DivisionRef;

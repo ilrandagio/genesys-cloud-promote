@@ -1,5 +1,6 @@
 import { decrypt } from '../lib/crypto.js';
 import type { Environment } from '../lib/schema.js';
+import { toDivision, type DivisionRef } from './types.js';
 
 interface Token {
   value: string;
@@ -7,6 +8,8 @@ interface Token {
 }
 
 const tokenCache = new Map<string, Token>();
+/** Nomi delle divisioni per ambiente (id minuscolo → nome), riletti dopo 5 minuti */
+const divisionCache = new Map<string, { at: number; names: Map<string, string> }>();
 
 /**
  * Client REST minimale verso la Platform API di una singola org.
@@ -97,6 +100,32 @@ export class GenesysClient {
   }
 
   /** Scorre tutte le pagine di un endpoint a paginazione pageNumber/pageSize */
+  /** Nomi delle divisioni dell'org; vuoto se il client non può leggerle */
+  async divisionNames(): Promise<Map<string, string>> {
+    const hit = divisionCache.get(this.env.id);
+    if (hit && Date.now() - hit.at < 5 * 60_000) return hit.names;
+    let names = new Map<string, string>();
+    try {
+      const list = await this.listAll<{ id: string; name: string }>('/api/v2/authorization/divisions');
+      names = new Map(list.map((d) => [d.id.toLowerCase(), d.name]));
+    } catch {
+      // permesso mancante: si resta con gli ID
+    }
+    divisionCache.set(this.env.id, { at: Date.now(), names });
+    return names;
+  }
+
+  /**
+   * Divisione con il nome: alcune API (es. Canned Response Assets) restituiscono solo l'ID della divisione,
+   * senza nome; il nome si ricava dall'elenco delle divisioni dell'org
+   */
+  async namedDivision(raw: { id?: string; name?: string } | null | undefined): Promise<DivisionRef | undefined> {
+    const d = toDivision(raw);
+    if (!d?.id || d.name !== d.id) return d;
+    const name = (await this.divisionNames()).get(d.id.toLowerCase());
+    return name ? { ...d, name } : d;
+  }
+
   async listAll<T = any>(path: string, extraQuery = ''): Promise<T[]> {
     const out: T[] = [];
     const sep = path.includes('?') ? '&' : '?';

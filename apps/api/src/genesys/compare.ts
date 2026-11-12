@@ -81,7 +81,7 @@ export class TargetComparer {
   async sourceDivision(obj: GcObjectRef): Promise<DivisionRef | undefined> {
     try {
       const item = (await this.cached(this.sourceLists, this.source, obj.type)).find((o) => o.id === obj.id);
-      return toDivision(item?.division);
+      return await this.source.namedDivision(item?.division);
     } catch (e) {
       if (e instanceof PermissionError) return undefined;
       throw e;
@@ -101,7 +101,7 @@ export class TargetComparer {
     );
     if (!match) return { status: 'missing', divisionMissing };
 
-    const division: DivisionRef | undefined = toDivision(match.division);
+    const division: DivisionRef | undefined = await this.target.namedDivision(match.division);
     const def = CATALOG[obj.type];
     if (!def.comparable) return { status: 'present', id: match.id, division, divisionMissing };
 

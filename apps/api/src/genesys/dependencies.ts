@@ -366,7 +366,7 @@ export async function buildDependencyTree(
       if (e instanceof PermissionError) {
         node.error = e.message;
         // Anche se l'oggetto non è leggibile, Genesys indica in quale divisione si trova
-        node.division = toDivision(e.divisions[0]);
+        node.division = await client.namedDivision(e.divisions[0]);
       } else if (e instanceof DependencyReadError) {
         node.error = `Dipendenze non leggibili: ${e.message}`;
       } else if (e instanceof NotFoundError) {
@@ -378,7 +378,7 @@ export async function buildDependencyTree(
     if (DIVISIONED_TYPES.has(obj.type) && !node.division) {
       try {
         const full = await get(CATALOG[obj.type].getPath.replace('{id}', obj.id));
-        node.division = toDivision(full?.division);
+        node.division = await client.namedDivision(full?.division);
       } catch (e) {
         if (!(e instanceof PermissionError) && !(e instanceof NotFoundError)) throw e;
       }

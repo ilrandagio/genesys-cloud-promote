@@ -27,14 +27,15 @@ export async function objectRoutes(app: FastifyInstance) {
       .parse(req.params);
     const client = await clientFor(envId);
     const items = await listObjects(client, type as ObjectType);
+    const divisions = await Promise.all(items.map((o: any) => client.namedDivision(o.division)));
     return items
-      .map((o: any) => ({
+      .map((o: any, i: number) => ({
         type,
         id: o.id,
         name: o.name,
         subtype: type === 'flow' ? o.type : undefined,
         description: o.description ?? '',
-        division: toDivision(o.division)?.name,
+        division: divisions[i]?.name,
         published: type === 'flow' ? Boolean(o.publishedVersion) : undefined,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));

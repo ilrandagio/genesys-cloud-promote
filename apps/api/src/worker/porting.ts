@@ -25,6 +25,7 @@ import {
   includeFilter,
   remainingGuids,
   remapConfig,
+  normalizeFilePaths,
   remapReferencedFiles,
   selectResources,
   unexportedFiles,
@@ -178,6 +179,8 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   }
 
   // ---- 2. Selezione risorse e rimappatura ID ----
+  const fixedPaths = normalizeFilePaths(cfg);
+  if (fixedPaths) log.info(`Percorsi dei file con "\\" normalizzati con "/": ${fixedPaths}`);
   const addresses = selectResources(cfg, toExport);
   const missing = toExport.filter((i) => !addresses.has(i));
   if (missing.length) {

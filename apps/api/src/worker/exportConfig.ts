@@ -19,6 +19,34 @@ const GUID_G = ID_TOKEN_G;
 /** Attributi che contengono percorsi o hash di file: gli ID nel nome del file non sono riferimenti */
 const FILE_ATTRIBUTES = new Set(['filepath', 'file_content_hash', 'filename']);
 
+/**
+ * Percorsi dei file esportati con "\\" (export eseguito su Windows): dentro un'espressione Terraform come
+ * ${filesha256("audio_prompts\\x.wav")} la barra rovesciata diventa una sequenza di escape non valida
+ * ("\\c", "\\n"…). Si usano sempre "/", che Terraform accetta su ogni sistema, anche nei blocchi annidati
+ * (es. resources[] degli User Prompt).
+ */
+export function normalizeFilePaths(cfg: TfJson): number {
+  let fixed = 0;
+  const walk = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (node && typeof node === 'object') {
+      const obj = node as Record<string, unknown>;
+      for (const [k, v] of Object.entries(obj)) {
+        if (FILE_ATTRIBUTES.has(k) && typeof v === 'string' && v.includes('\\')) {
+          obj[k] = v.replace(/\\+/g, '/');
+          fixed++;
+        } else {
+          obj[k] = walk(v);
+        }
+      }
+      return obj;
+    }
+    return node;
+  };
+  walk(cfg.resource ?? {});
+  return fixed;
+}
+
 const simplify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**

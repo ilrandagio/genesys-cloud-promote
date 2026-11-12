@@ -25,6 +25,18 @@ const FILE_ATTRIBUTES = new Set(['filepath', 'file_content_hash', 'filename']);
  * ("\\c", "\\n"…). Si usano sempre "/", che Terraform accetta su ogni sistema, anche nei blocchi annidati
  * (es. resources[] degli User Prompt).
  */
+/**
+ * Percorso da inserire in una stringa di un'espressione Terraform: sempre "/", e i caratteri che lì hanno
+ * un significato (", ${, %{) protetti, nel caso un nome di file li contenga
+ */
+export function hclPath(p: string): string {
+  return p
+    .replace(/\\+/g, '/')
+    .replace(/"/g, () => '\\"')
+    .replace(/\$\{/g, () => '$${')
+    .replace(/%\{/g, () => '%%{');
+}
+
 export function normalizeFilePaths(cfg: TfJson): number {
   let fixed = 0;
   const walk = (node: unknown): unknown => {
@@ -222,7 +234,7 @@ export async function remapReferencedFiles(
       await writeFile(abs, next);
       if (Object.keys(used).length) attrs.substitutions = { ...(attrs.substitutions ?? {}), ...used };
       // L'hash del contenuto deve seguire il file modificato
-      if ('file_content_hash' in attrs) attrs.file_content_hash = `\${filesha256("${filepath.replace(/\\/g, '/')}")}`;
+      if ('file_content_hash' in attrs) attrs.file_content_hash = `\${filesha256("${hclPath(filepath)}")}`;
       report.push({ file: filepath, replaced, placeholders });
     }
   }

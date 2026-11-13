@@ -77,6 +77,14 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_routing_language',
     comparable: true,
   },
+  skillgroup: {
+    group: 'Routing',
+    label: 'Skill Expression Group',
+    listPath: '/api/v2/routing/skillgroups',
+    getPath: '/api/v2/routing/skillgroups/{id}',
+    tfType: 'genesyscloud_routing_skill_group',
+    comparable: true,
+  },
   dataaction: {
     group: 'Integrations',
     label: 'Data Action',

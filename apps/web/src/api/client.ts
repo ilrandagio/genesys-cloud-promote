@@ -10,6 +10,7 @@ export type ObjectType =
   | 'schedulegroup'
   | 'prompt'
   | 'group'
+  | 'skillgroup'
   | 'role'
   | 'division'
   | 'script'

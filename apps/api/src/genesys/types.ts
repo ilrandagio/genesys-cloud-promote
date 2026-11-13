@@ -12,6 +12,7 @@ export const OBJECT_TYPES = [
   'division',
   'group',
   'role',
+  'skillgroup',
   'script',
   'datatable',
   'emergencygroup',
@@ -43,6 +44,7 @@ export const OBJECT_TYPES = [
 
 /** Tipi che in Genesys Cloud appartengono a una divisione */
 export const DIVISIONED_TYPES: ReadonlySet<ObjectType> = new Set<ObjectType>([
+  'skillgroup',
   'flow',
   'queue',
   'schedule',

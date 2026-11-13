@@ -43,6 +43,7 @@ export const TYPE_LABELS: Record<string, string> = {
   prompt: 'User Prompt',
   division: 'Division',
   group: 'Group',
+  skillgroup: 'Skill Expression Group',
   role: 'Role',
   script: 'Script',
   datatable: 'Data Table',

@@ -33,7 +33,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 | Gruppo | Tipi |
 |---|---|
 | Architect | Flows, Schedules, Schedule Groups, User Prompts, Scripts, Data Tables, Emergency Groups |
-| Routing | Queues, ACD Skills, Wrap-up Codes, Languages |
+| Routing | Queues, ACD Skills, Wrap-up Codes, Languages, Skill Expression Groups |
 | Integrations | Integrations, Data Actions |
 | Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
 | Messaging | Messenger Configurations, Messenger Deployments, Supported Content |

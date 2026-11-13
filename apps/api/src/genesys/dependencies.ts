@@ -41,6 +41,7 @@ const REFERENCE_TYPES: ObjectType[] = (
     'webconfig',
     'webdeployment',
     'supportedcontent',
+    'skillgroup',
     'group',
     'role',
     'responselibrary',
@@ -222,6 +223,29 @@ async function directDependencies(
   idIndex: () => Promise<IdIndex>,
 ): Promise<RawDep[]> {
   switch (obj.type) {
+    case 'skillgroup': {
+      // Le condizioni citano ACD Skills e Languages per nome (skillConditions), non per ID
+      const sg = await get(CATALOG.skillgroup.getPath.replace('{id}', encodeURIComponent(obj.id)));
+      const wanted = { skill: new Set<string>(), language: new Set<string>() };
+      const walk = (v: unknown): void => {
+        if (Array.isArray(v)) return v.forEach(walk);
+        if (!v || typeof v !== 'object') return;
+        const o = v as Record<string, unknown>;
+        if (typeof o.routingSkill === 'string') wanted.skill.add(o.routingSkill.toLowerCase());
+        if (typeof o.languageSkill === 'string') wanted.language.add(o.languageSkill.toLowerCase());
+        Object.values(o).forEach(walk);
+      };
+      walk(sg?.skillConditions);
+      const deps: RawDep[] = [];
+      for (const type of ['skill', 'language'] as const) {
+        if (!wanted[type].size) continue;
+        for (const o of await client.listAll<{ id: string; name: string }>(CATALOG[type].listPath)) {
+          if (wanted[type].has(o.name.toLowerCase())) deps.push({ type, rawType: type.toUpperCase(), id: o.id, name: o.name });
+        }
+      }
+      return deps;
+    }
+
     case 'group': {
       // Roles assegnati al Group (con le divisioni): non stanno nel dettaglio del Group ma nei suoi grants
       const own = scanReferences(await get(CATALOG.group.getPath.replace('{id}', obj.id)), await idIndex(), obj, 'id');

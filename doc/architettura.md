@@ -123,6 +123,7 @@ L'analisi legge direttamente la Platform API (nessuno stato, nessuna scrittura) 
 | Queue | In-queue Flow, Whisper Prompt, ACD Skills del bullseye, Wrap-up Codes |
 | Data Action | Integration |
 | Schedule Group | Schedule |
+| Skill Expression Group | ACD Skills e Languages citati per nome nelle condizioni (`skillConditions`) |
 | Group | Roles assegnati al Group (grants), più gli ID citati nel dettaglio |
 | Canned Response Library | Le sue Canned Responses, come oggetti *contenuti*: sono loro a usare la Library, quindi nell'ordine di creazione vengono dopo |
 
@@ -145,12 +146,12 @@ Gli ID interni (pagine, componenti, task, azioni, variabili) e l'oggetto stesso 
 
 ### Tipi supportati e regole di sicurezza
 
-Il catalogo comprende 36 tipi, raggruppati nel selettore dell'interfaccia. Per i tipi che non hanno un'analisi dedicata (Outbound, Messaging, Canned Responses) le dipendenze si ricavano cercando nel dettaglio dell'oggetto gli ID degli oggetti noti dell'org sorgente.
+Il catalogo comprende 37 tipi, raggruppati nel selettore dell'interfaccia. Per i tipi che non hanno un'analisi dedicata (Outbound, Messaging, Canned Responses) le dipendenze si ricavano cercando nel dettaglio dell'oggetto gli ID degli oggetti noti dell'org sorgente.
 
 | Gruppo | Tipi |
 | --- | --- |
 | Architect | Flows, Schedules, Schedule Groups, User Prompts, Scripts, Data Tables, Emergency Groups |
-| Routing | Queues, ACD Skills, Wrap-up Codes, Languages |
+| Routing | Queues, ACD Skills, Wrap-up Codes, Languages, Skill Expression Groups |
 | Integrations | Integrations, Data Actions |
 | Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
 | Messaging | Messenger Configurations, Messenger Deployments, Supported Content |

@@ -18,6 +18,7 @@ import {
   applyQueueMembership,
   applySafetyRules,
   applyTargetSettings,
+  restoreActionUrlTemplates,
   buildWrapupMappings,
   rewriteAssetLinks,
 } from './transforms.js';
@@ -217,6 +218,9 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
         .join(', ')}`,
     );
   }
+
+  // Data Actions: URL della richiesta tolto dall'export (provider 1.88.0), riletto dal sorgente
+  await restoreActionUrlTemplates(cfg, addresses, new GenesysClient(sourceEnv), log.info);
 
   // Regole di sicurezza: campagne e sequenze spente, liste senza contatti, indirizzo degli asset rimosso
   applySafetyRules(cfg, log.info);

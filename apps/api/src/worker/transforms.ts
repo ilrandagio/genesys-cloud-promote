@@ -549,3 +549,31 @@ export async function applyDataTableRows(
   }
   if (Array.isArray(cfg.import) && !cfg.import.length) delete cfg.import;
 }
+
+/**
+ * Provider 1.88.0: l'export toglie config_request.request_url_template da tutte le Data Actions (voleva farlo
+ * solo per le Function Data Actions, dove lo imposta la piattaforma), e la creazione sul target fallisce con
+ * "Required config.request.requestUrlTemplate has no value". Il valore si rilegge dal sorgente e si rimette;
+ * "${" e "%{" dei template Velocity vengono protetti. Le Function Data Actions restano senza, come previsto.
+ */
+export async function restoreActionUrlTemplates(
+  cfg: TfJson,
+  addresses: Map<PortItem, string>,
+  source: Reader,
+  log: Log,
+) {
+  const tfType = CATALOG.dataaction.tfType;
+  let restored = 0;
+  for (const [it, addr] of addresses) {
+    if (it.type !== 'dataaction') continue;
+    const attrs = cfg.resource?.[tfType]?.[addr.slice(tfType.length + 1)];
+    const request = attrs?.config_request?.[0];
+    if (!request || request.request_url_template || attrs.function_config?.length) continue;
+    const action = await source.get<any>(CATALOG.dataaction.getPath.replace('{id}', encodeURIComponent(it.id)));
+    const template: string | undefined = action?.config?.request?.requestUrlTemplate;
+    if (!template) continue;
+    request.request_url_template = tfLiteral(template);
+    restored++;
+  }
+  if (restored) log(`Data Actions: request_url_template riletto dal sorgente per ${restored} azioni (non incluso dall'export)`);
+}

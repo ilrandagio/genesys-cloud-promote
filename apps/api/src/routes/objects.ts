@@ -100,8 +100,9 @@ export async function objectRoutes(app: FastifyInstance) {
     const unreadable = built ? (await built).unreadable : [];
     const warnings = unreadable.length
       ? [
-          `Tipi di oggetto non leggibili dal client OAuth del sorgente: ${unreadable.join(', ')}. ` +
-            `I riferimenti a questi oggetti in flow e script non possono essere riconosciuti.`,
+          `Tipi di oggetto non leggibili dal client OAuth del sorgente: ${unreadable.join('; ')}. ` +
+            `I riferimenti a questi oggetti non possono essere riconosciuti nell'analisi. ` +
+            `I permessi si aggiungono al Role del client OAuth (Admin > OAuth > client > Roles).`,
         ]
       : [];
     return { trees, warnings };

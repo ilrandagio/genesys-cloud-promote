@@ -116,7 +116,11 @@ export function lazyIdIndex(client: GenesysClient) {
         } catch (e) {
           // Un tipo non leggibile (permessi, endpoint non disponibile) non deve far perdere gli altri
           if (!(e instanceof PermissionError) && !(e instanceof NotFoundError)) throw e;
-          unreadable.push(CATALOG[type].label);
+          unreadable.push(
+            e instanceof PermissionError
+              ? `${CATALOG[type].label} (${e.permission ? `manca il permesso '${e.permission}'` : 'permessi mancanti'})`
+              : `${CATALOG[type].label} (API non disponibile in questa org: funzionalità non attiva)`,
+          );
         }
       }
       const byName = new Map([...names].filter(([, list]) => list.length === 1).map(([k, list]) => [k, list[0]]));

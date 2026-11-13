@@ -168,6 +168,8 @@ export class PermissionError extends Error {
   readonly statusCode = 403;
   /** Divisioni indicate da Genesys nella risposta (quelle dell'oggetto non leggibile) */
   readonly divisions: { id?: string; name: string }[] = [];
+  /** Permesso mancante indicato da Genesys, se presente */
+  readonly permission?: string;
   constructor(env: Pick<Environment, 'name' | 'clientId'>, path: string, body: string) {
     let detail = '';
     let divisions: { id?: string; name: string }[] = [];
@@ -194,5 +196,10 @@ export class PermissionError extends Error {
         `Aggiungere il permesso o la divisione al ruolo del client (Admin > OAuth > Roles). [GET ${path}]`,
     );
     this.divisions = divisions;
+    try {
+      this.permission = (JSON.parse(body) as { messageParams?: { permission?: string } }).messageParams?.permission;
+    } catch {
+      /* risposta non JSON */
+    }
   }
 }

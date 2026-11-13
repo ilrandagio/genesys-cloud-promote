@@ -10,6 +10,8 @@ export const OBJECT_TYPES = [
   'schedulegroup',
   'prompt',
   'division',
+  'group',
+  'role',
   'script',
   'datatable',
   'emergencygroup',

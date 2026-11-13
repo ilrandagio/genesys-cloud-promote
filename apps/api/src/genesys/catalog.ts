@@ -142,6 +142,22 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_auth_division',
     comparable: true,
   },
+  group: {
+    group: 'People & Permissions',
+    label: 'Group',
+    listPath: '/api/v2/groups',
+    getPath: '/api/v2/groups/{id}',
+    tfType: 'genesyscloud_group',
+    comparable: true,
+  },
+  role: {
+    group: 'People & Permissions',
+    label: 'Role',
+    listPath: '/api/v2/authorization/roles',
+    getPath: '/api/v2/authorization/roles/{id}',
+    tfType: 'genesyscloud_auth_role',
+    comparable: true,
+  },
   prompt: {
     group: 'Architect',
     label: 'User Prompt',

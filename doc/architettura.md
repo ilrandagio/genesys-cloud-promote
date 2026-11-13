@@ -123,6 +123,7 @@ L'analisi legge direttamente la Platform API (nessuno stato, nessuna scrittura) 
 | Queue | In-queue Flow, Whisper Prompt, ACD Skills del bullseye, Wrap-up Codes |
 | Data Action | Integration |
 | Schedule Group | Schedule |
+| Group | Roles assegnati al Group (grants), più gli ID citati nel dettaglio |
 | Canned Response Library | Le sue Canned Responses, come oggetti *contenuti*: sono loro a usare la Library, quindi nell'ordine di creazione vengono dopo |
 
 **Riconoscimento dei riferimenti.** Nel testo di una configurazione si cercano:
@@ -144,7 +145,7 @@ Gli ID interni (pagine, componenti, task, azioni, variabili) e l'oggetto stesso 
 
 ### Tipi supportati e regole di sicurezza
 
-Il catalogo comprende 34 tipi, raggruppati nel selettore dell'interfaccia. Per i tipi che non hanno un'analisi dedicata (Outbound, Messaging, Canned Responses) le dipendenze si ricavano cercando nel dettaglio dell'oggetto gli ID degli oggetti noti dell'org sorgente.
+Il catalogo comprende 36 tipi, raggruppati nel selettore dell'interfaccia. Per i tipi che non hanno un'analisi dedicata (Outbound, Messaging, Canned Responses) le dipendenze si ricavano cercando nel dettaglio dell'oggetto gli ID degli oggetti noti dell'org sorgente.
 
 | Gruppo | Tipi |
 | --- | --- |
@@ -154,13 +155,14 @@ Il catalogo comprende 34 tipi, raggruppati nel selettore dell'interfaccia. Per i
 | Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
 | Messaging | Messenger Configurations, Messenger Deployments, Supported Content |
 | Canned Responses | Libraries, Responses, Assets |
-| People & Permissions | Divisions |
+| People & Permissions | Divisions, Groups (con i Roles assegnati), Roles |
 
 Durante la simulazione, dopo la selezione delle risorse, il worker applica regole fisse alla configurazione esportata:
 
 - **Campaigns e Campaign Sequences spente**: `campaign_status` e `status` forzati a `off`; l'avvio sul target resta un'azione manuale.
 - **Impostazioni legate all'org scelte sul target** (Campaigns e Queues): nell'analisi, sulla riga dell'oggetto da portare, si scelgono tra i valori del target Site ed Edge Group (Campaign; callback della Queue, proposti per nome), l'indirizzo email in uscita della Queue ed eventuale elenco completo (dominio + Email Route, proposti per parte prima della `@` uguale, perché i domini di solito cambiano tra org) e il numero in uscita (Queue: Calling Party Number; Campaign: Caller Address). Se l'oggetto esiste già sul target si propongono i suoi valori attuali (Site, Edge Group, indirizzi email, numero); altrimenti Site ed Edge Group per nome, indirizzi per parte prima della @ e numero da inserire a mano. Gli elenchi del target non leggibili (es. permessi mancanti) sono segnalati nell'analisi; il numero è obbligatorio per le Campaigns che lo avevano, per le Queues vuoto significa nessun numero. Senza le scelte obbligatorie la simulazione non parte; il worker verifica che i valori esistano sul target e li scrive al posto di quelli del sorgente.
 - **Membri delle Queues mai portati né toccati**: `members`, Groups, Teams e Skill Groups non vengono esportati. Sul target la Queue ha `ignore_members = true`, quindi i membri presenti restano; Groups, Teams e Skill Groups sono quelli del target se la Queue esiste già, nessuno se è nuova. Gli indirizzi di messaggistica in uscita (SMS, WhatsApp, Open Messaging) sono quelli del target se la Queue esiste già, altrimenti nessuno.
+- **Groups e Roles assegnati**: i membri dei Groups (`member_ids`, `owner_ids`) non vengono esportati e sul target restano quelli presenti. I Roles assegnati al Group sul sorgente, con le loro Divisions, vengono assegnati anche sul target con `genesyscloud_group_roles`, costruito dal worker dai grants del sorgente: Role riusato o portato nello stesso rilascio, Division abbinata per nome (`*` = tutte). Le assegnazioni del Group sul target vengono sostituite da quelle del sorgente; un Group senza Roles sul sorgente non tocca quelle del target. Un Role o una Division non disponibili sul target fermano la simulazione con l'elenco.
 - **Contact Lists senza contatti**: si porta la struttura (colonne, numeri, Attempt Limit), i dati dei contatti non escono dal sorgente.
 - **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset nel testo delle Responses vengono riscritti per intero: con l'URL dell'asset sul target, letto in simulazione, se l'asset è riusato; con il riferimento Terraform `content_location` se l'asset viene caricato nello stesso rilascio, che così avviene prima della Response.
 - **Messenger Deployment**: punta alla versione della Messenger Configuration creata nello stesso rilascio oppure all'ultima versione pubblicata sul target; se non ce n'è nessuna la simulazione si ferma.

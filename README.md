@@ -38,7 +38,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 | Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
 | Messaging | Messenger Configurations, Messenger Deployments, Supported Content |
 | Canned Responses | Libraries, Responses, Assets |
-| People & Permissions | Divisions |
+| People & Permissions | Divisions, Groups (con i Roles assegnati), Roles |
 
 ### Regole di sicurezza applicate automaticamente
 
@@ -56,6 +56,11 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   Sul target la Queue ha `ignore_members = true`, quindi i membri presenti restano; Groups, Teams e Skill Groups sono
   quelli del target se la Queue esiste già, nessuno se è nuova. Gli indirizzi di messaggistica in uscita (SMS, WhatsApp,
   Open Messaging) sono quelli del target se la Queue esiste già, altrimenti nessuno.
+- **Groups**: i membri (`member_ids`, `owner_ids`) non vengono esportati, sul target restano quelli presenti. I **Roles
+  assegnati** al Group sul sorgente, con le loro Divisions, vengono assegnati anche sul target (`genesyscloud_group_roles`,
+  costruito dal worker): Role riusato o portato nello stesso rilascio, Division abbinata per nome (`*` = tutte). Le
+  assegnazioni del Group sul target vengono sostituite da quelle del sorgente; un Group senza Roles sul sorgente non tocca
+  quelle del target. Un Role o una Division non disponibili sul target fermano la simulazione con l'elenco.
 - **Le Contact Lists si portano senza contatti**: viene creata la struttura (colonne, numeri, Attempt Limit), i dati non escono dal sorgente.
 - **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
   testo delle Responses vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,

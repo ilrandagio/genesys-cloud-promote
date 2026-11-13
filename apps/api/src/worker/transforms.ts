@@ -392,3 +392,77 @@ export async function applyQueueMembership(
     );
   }
 }
+
+/**
+ * Groups portati: i Roles assegnati sul sorgente (con le divisioni) vengono assegnati anche sul target con
+ * genesyscloud_group_roles, costruito dal worker dai grants del sorgente:
+ * - Role riusato sul target → suo ID; Role portato nello stesso rilascio → riferimento Terraform;
+ * - divisione abbinata per nome ("*" = tutte le divisioni resta com'è);
+ * - Role o divisione non disponibili sul target → la simulazione si ferma con l'elenco.
+ * Le assegnazioni di Roles del Group sul target vengono sostituite da quelle del sorgente. Un Group senza
+ * Roles sul sorgente non tocca i Roles del Group sul target.
+ */
+export async function applyGroupRoles(
+  cfg: TfJson,
+  addresses: Map<PortItem, string>,
+  source: Reader,
+  targetIds: Map<string, string>,
+  sameJobRefs: Map<string, string>,
+  extraImports: { addr: string; id: string }[],
+  log: Log,
+) {
+  const tfType = 'genesyscloud_group_roles';
+  const missing: string[] = [];
+  for (const [it, addr] of [...addresses]) {
+    if (it.type !== 'group') continue;
+    const subject = await source.get<any>(`/api/v2/authorization/subjects/${encodeURIComponent(it.id)}`);
+    const byRole = new Map<string, { roleId: string; roleName: string; divisions: Set<string> }>();
+    const divisionNames = new Map<string, string>();
+    for (const g of (subject?.grants ?? []) as any[]) {
+      const roleId: string | undefined = g.role?.id;
+      if (!roleId) continue;
+      const entry = byRole.get(roleId) ?? { roleId, roleName: g.role.name ?? roleId, divisions: new Set<string>() };
+      if (g.division?.id) {
+        entry.divisions.add(g.division.id);
+        divisionNames.set(g.division.id, g.division.name ?? g.division.id);
+      }
+      byRole.set(roleId, entry);
+    }
+    if (!byRole.size) {
+      log(`Group "${it.name}": nessun Role sul sorgente, i Roles del Group sul target non vengono toccati`);
+      continue;
+    }
+    const roles: { role_id: string; division_ids: string[] }[] = [];
+    for (const r of byRole.values()) {
+      const key = r.roleId.toLowerCase();
+      const roleRef = targetIds.get(key) ?? (sameJobRefs.has(key) ? `\${${sameJobRefs.get(key)}.id}` : undefined);
+      if (!roleRef) {
+        missing.push(`Role "${r.roleName}" del Group "${it.name}"`);
+        continue;
+      }
+      const divisions: string[] = [];
+      for (const d of r.divisions) {
+        if (d === '*') divisions.push('*');
+        else {
+          const mapped = targetIds.get(d.toLowerCase());
+          if (mapped) divisions.push(mapped);
+          else missing.push(`Division "${divisionNames.get(d)}" del Role "${r.roleName}" nel Group "${it.name}"`);
+        }
+      }
+      roles.push({ role_id: roleRef, division_ids: divisions });
+    }
+    const label = addr.slice('genesyscloud_group.'.length);
+    cfg.resource ??= {};
+    cfg.resource[tfType] ??= {};
+    cfg.resource[tfType][label] = { group_id: `\${${addr}.id}`, roles };
+    if (it.targetId) extraImports.push({ addr: `${tfType}.${label}`, id: it.targetId });
+    log(`Group "${it.name}": ${roles.length} Roles assegnati sul target (sostituiscono quelli attuali del Group)`);
+  }
+  if (missing.length) {
+    throw new Error(
+      `Roles dei Groups non assegnabili sul target: ${missing.join(', ')}. ` +
+        `Portare i Roles insieme al Group (azione "Porta" nell'albero) oppure crearli sul target; ` +
+        `le Divisions vanno create sul target con lo stesso nome.`,
+    );
+  }
+}

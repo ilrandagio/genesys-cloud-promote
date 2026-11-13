@@ -12,6 +12,7 @@ import { getEnvironment } from '../lib/repo.js';
 import { packArtifact, unpackArtifact } from './artifact.js';
 import {
   alignWebDeploymentVersions,
+  applyGroupRoles,
   applyQueueMembership,
   applySafetyRules,
   applyTargetSettings,
@@ -120,6 +121,20 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const srcCreds = credsOf(sourceEnv);
   const tgtCreds = credsOf(targetEnv);
 
+  // Membri di Queues e Groups mai esportati (sul target restano quelli presenti). Solo per i tipi esportati:
+  // il provider rifiuta l'esclusione di attributi di tipi non esportati
+  const excluded = [
+    ...(toExport.some((i) => i.type === 'queue')
+      ? [
+          'genesyscloud_routing_queue.members',
+          'genesyscloud_routing_queue.groups',
+          'genesyscloud_routing_queue.teams',
+          'genesyscloud_routing_queue.skill_groups',
+        ]
+      : []),
+    ...(toExport.some((i) => i.type === 'group') ? ['genesyscloud_group.member_ids', 'genesyscloud_group.owner_ids'] : []),
+  ];
+
   // ---- 1. Export dal sorgente ----
   // Mai un export senza filtro: esporterebbe l'intera org
   let cfg: TfJson = { resource: {} };
@@ -150,16 +165,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
             include_filter_resources: toExport.map(includeFilter),
             // Membri delle Queue mai esportati: sul target restano quelli presenti. Solo se si esportano Queue:
             // il provider rifiuta l'esclusione di attributi di tipi non esportati
-            ...(toExport.some((i) => i.type === 'queue')
-              ? {
-                  exclude_attributes: [
-                    'genesyscloud_routing_queue.members',
-                    'genesyscloud_routing_queue.groups',
-                    'genesyscloud_routing_queue.teams',
-                    'genesyscloud_routing_queue.skill_groups',
-                  ],
-                }
-              : {}),
+            ...(excluded.length ? { exclude_attributes: excluded } : {}),
           },
         },
       },
@@ -222,6 +228,10 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // Queues: membri mai portati, quelli del target mai toccati
   await applyQueueMembership(cfg, addresses, targetClient, log.info);
 
+  // Groups: Roles assegnati sul sorgente, assegnati anche sul target
+  const extraImports: { addr: string; id: string }[] = [];
+  await applyGroupRoles(cfg, addresses, new GenesysClient(sourceEnv), targetIds, sameJobRefs, extraImports, log.info);
+
   // Wrap-up code mappings: unione di sorgente e target, già con gli ID del target
   for (const it of singletons) {
     const tfType = CATALOG[it.type].tfType;
@@ -279,6 +289,10 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
       );
       await tfOrThrow(['import', '-no-color', '-input=false', addr, it.targetId], exportDir, tgtCreds, log.line);
     }
+  }
+  for (const { addr, id } of extraImports) {
+    log.info(`Import di ${addr} nello state locale (Roles attuali del Group sul target)`);
+    await tfOrThrow(['import', '-no-color', '-input=false', addr, id], exportDir, tgtCreds, log.line);
   }
 
   // ---- 4. Piano salvato ----

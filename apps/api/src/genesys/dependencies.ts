@@ -41,6 +41,8 @@ const REFERENCE_TYPES: ObjectType[] = (
     'webconfig',
     'webdeployment',
     'supportedcontent',
+    'group',
+    'role',
     'responselibrary',
     'response',
     'responseasset',
@@ -216,6 +218,17 @@ async function directDependencies(
   idIndex: () => Promise<IdIndex>,
 ): Promise<RawDep[]> {
   switch (obj.type) {
+    case 'group': {
+      // Roles assegnati al Group (con le divisioni): non stanno nel dettaglio del Group ma nei suoi grants
+      const own = scanReferences(await get(CATALOG.group.getPath.replace('{id}', obj.id)), await idIndex(), obj, 'id');
+      const subject = await get(`/api/v2/authorization/subjects/${encodeURIComponent(obj.id)}`);
+      const roles = new Map<string, RawDep>();
+      for (const g of (subject?.grants ?? []) as any[]) {
+        if (g.role?.id) roles.set(g.role.id, { type: 'role', rawType: 'ROLE', id: g.role.id, name: g.role.name ?? g.role.id });
+      }
+      return [...own, ...roles.values()];
+    }
+
     case 'responselibrary': {
       // Una Library non cita le sue Responses: sono le Responses a indicare la Library. Si elencano quindi
       // le Responses della Library, come oggetti contenuti, più eventuali riferimenti nel dettaglio

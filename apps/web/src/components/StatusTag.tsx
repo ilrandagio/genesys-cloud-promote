@@ -42,6 +42,8 @@ export const TYPE_LABELS: Record<string, string> = {
   schedulegroup: 'Schedule Group',
   prompt: 'User Prompt',
   division: 'Division',
+  group: 'Group',
+  role: 'Role',
   script: 'Script',
   datatable: 'Data Table',
   emergencygroup: 'Emergency Group',

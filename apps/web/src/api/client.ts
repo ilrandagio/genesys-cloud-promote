@@ -9,6 +9,8 @@ export type ObjectType =
   | 'schedule'
   | 'schedulegroup'
   | 'prompt'
+  | 'group'
+  | 'role'
   | 'division'
   | 'script'
   | 'datatable'

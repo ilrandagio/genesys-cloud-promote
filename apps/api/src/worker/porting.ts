@@ -13,6 +13,7 @@ import { packArtifact, unpackArtifact } from './artifact.js';
 import {
   alignWebDeploymentVersions,
   applyGroupRoles,
+  checkRoleUserConditions,
   applyQueueMembership,
   applySafetyRules,
   applyTargetSettings,
@@ -227,6 +228,9 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   await applyTargetSettings(cfg, addresses, targetClient, log.info);
   // Queues: membri mai portati, quelli del target mai toccati
   await applyQueueMembership(cfg, addresses, targetClient, log.info);
+
+  // Utenti mai portati: nessun Role può citare un utente del sorgente
+  checkRoleUserConditions(cfg);
 
   // Groups: Roles assegnati sul sorgente, assegnati anche sul target
   const extraImports: { addr: string; id: string }[] = [];

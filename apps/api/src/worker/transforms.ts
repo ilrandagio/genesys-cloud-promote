@@ -466,3 +466,22 @@ export async function applyGroupRoles(
     );
   }
 }
+
+/**
+ * Gli utenti non si portano mai. Un Role con una condizione su un utente specifico
+ * (permission_policies.conditions.terms.operands.user_id) porterebbe sul target l'ID di un utente del
+ * sorgente: la simulazione si ferma, la condizione va tolta o adattata sul sorgente.
+ */
+export function checkRoleUserConditions(cfg: TfJson) {
+  const offending: string[] = [];
+  for (const [label, attrs] of Object.entries(cfg.resource?.genesyscloud_auth_role ?? {})) {
+    const json = JSON.stringify((attrs as any).permission_policies ?? []);
+    if (/"user_id"\s*:\s*"[^"]+"/.test(json)) offending.push((attrs as any).name ?? label);
+  }
+  if (offending.length) {
+    throw new Error(
+      `Roles con condizioni su utenti specifici: ${offending.join(', ')}. Gli utenti non vengono portati e i ` +
+        `loro ID sono diversi sul target: togliere o adattare la condizione, oppure non portare il Role.`,
+    );
+  }
+}

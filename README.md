@@ -61,6 +61,8 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   costruito dal worker): Role riusato o portato nello stesso rilascio, Division abbinata per nome (`*` = tutte). Le
   assegnazioni del Group sul target vengono sostituite da quelle del sorgente; un Group senza Roles sul sorgente non tocca
   quelle del target. Un Role o una Division non disponibili sul target fermano la simulazione con l'elenco.
+- **Gli utenti non si portano mai**: né come membri od owner di Groups e Queues, né come assegnatari dei Roles. Un Role
+  con una condizione su un utente specifico ferma la simulazione (l'ID dell'utente è diverso sul target).
 - **Le Contact Lists si portano senza contatti**: viene creata la struttura (colonne, numeri, Attempt Limit), i dati non escono dal sorgente.
 - **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
   testo delle Responses vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,

@@ -60,7 +60,11 @@ function toRows(n: DependencyNode, path: string, isRoot: boolean): TreeRow {
 }
 
 /** Azione proposta di default in base allo stato sul target */
+/** Data Action predefinita di Genesys (statica): esiste in ogni org, non si crea né si modifica */
+const isStaticAction = (n: { type: string; id: string }) => n.type === 'dataaction' && n.id.toLowerCase().startsWith('static');
+
 function defaultAction(n: DependencyNode, isRoot: boolean): PortAction {
+  if (isStaticAction(n)) return n.target && n.target.status !== 'missing' ? 'reuse' : 'skip';
   if (isRoot) return 'port';
   switch (n.target?.status) {
     case 'missing':
@@ -79,8 +83,9 @@ function defaultAction(n: DependencyNode, isRoot: boolean): PortAction {
  * manca (per un oggetto presente sul target le due scelte coincidono: i riferimenti puntano a quello del target)
  */
 function effectiveAction(n: DependencyNode, chosen: PortAction | undefined): PortAction {
-  const a = chosen ?? 'skip';
   const exists = !!n.target && n.target.status !== 'missing';
+  // Data Action predefinita: mai "Porta" (anche se scelto in una sessione precedente)
+  const a = isStaticAction(n) && chosen === 'port' ? 'skip' : (chosen ?? 'skip');
   if (a === 'skip' && exists) return 'reuse';
   if (a === 'reuse' && !exists) return 'skip';
   return a;
@@ -668,6 +673,11 @@ export default function PortingPage() {
                           <Tag color="blue">per nome</Tag>
                         </Tooltip>
                       )}
+                      {isStaticAction(n) && (
+                        <Tooltip title="Data Action predefinita di Genesys Cloud: esiste in ogni org con la sua Integration e non si può portare; si usa quella del target">
+                          <Tag>predefinita</Tag>
+                        </Tooltip>
+                      )}
                       {n.contained && (
                         <Tooltip title="Contenuto nell'oggetto padre (es. Canned Response di una Library): viene creato dopo il padre">
                           <Tag color="purple">contenuto</Tag>
@@ -767,7 +777,9 @@ export default function PortingPage() {
                         value={effectiveAction(n as DependencyNode, actions.get(keyOf(n)))}
                         onChange={(v) => setActions(new Map(actions).set(keyOf(n), v))}
                         options={[
-                          { value: 'port', label: exists ? 'Porta (sovrascrivi sul target)' : 'Porta' },
+                          ...(isStaticAction(n)
+                            ? []
+                            : [{ value: 'port' as const, label: exists ? 'Porta (sovrascrivi sul target)' : 'Porta' }]),
                           // Presente sul target: si usa quello; mancante: si salta (i riferimenti restano scoperti)
                           exists
                             ? { value: 'reuse' as const, label: ACTION_LABELS.reuse }

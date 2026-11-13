@@ -204,7 +204,18 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const addresses = selectResources(cfg, toExport, match);
   const missing = toExport.filter((i) => !addresses.has(i));
   if (missing.length) {
-    throw new Error(`Oggetti non trovati nell'export: ${missing.map((m) => `${m.type} "${m.name}"`).join(', ')}`);
+    // Le Data Actions predefinite (statiche) l'export le scrive come data source, non come risorse
+    const asData = Object.values(cfg.data?.genesyscloud_integration_action ?? {}).map((a: any) => String(a?.name ?? '').toLowerCase());
+    throw new Error(
+      `Oggetti non trovati nell'export: ${missing
+        .map((m) =>
+          `${CATALOG[m.type].label} "${m.name}"` +
+          (m.type === 'dataaction' && asData.includes(m.name.toLowerCase())
+            ? ' (Data Action predefinita di Genesys: non si porta, scegliere "Usa quella del target")'
+            : ''),
+        )
+        .join(', ')}`,
+    );
   }
 
   // Regole di sicurezza: campagne e sequenze spente, liste senza contatti, indirizzo degli asset rimosso

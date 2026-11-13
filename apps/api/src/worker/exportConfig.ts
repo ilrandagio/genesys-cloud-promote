@@ -80,18 +80,20 @@ export function includeFilter(item: PortItem): string {
 export function findAddress(cfg: TfJson, item: PortItem, match?: Record<string, string>): string | undefined {
   const tfType = CATALOG[item.type].tfType;
   const resources = cfg.resource?.[tfType] ?? {};
+  const byName: string[] = [];
   for (const [label, attrs] of Object.entries(resources)) {
     const nameAttr = typeof attrs?.name === 'string' ? attrs.name : undefined;
     const labelMatch =
       simplify(label) === simplify(item.name) ||
       (item.type === 'flow' && !!item.subtype && simplify(label) === simplify(`${item.subtype}_${item.name}`));
+    if (!(nameAttr ? nameAttr.toLowerCase() === item.name.toLowerCase() : labelMatch)) continue;
     // Attributi che distinguono gli omonimi (es. integration_id per Data Actions con lo stesso nome)
     const same = Object.entries(match ?? {}).every(([k, v]) => String(attrs?.[k] ?? '').toLowerCase() === v.toLowerCase());
-    if ((nameAttr ? nameAttr.toLowerCase() === item.name.toLowerCase() : labelMatch) && same) {
-      return `${tfType}.${label}`;
-    }
+    if (same) return `${tfType}.${label}`;
+    byName.push(label);
   }
-  return undefined;
+  // Un solo omonimo ma attributo diverso (es. integration_id scritto come riferimento): è comunque quello
+  return byName.length === 1 ? `${tfType}.${byName[0]}` : undefined;
 }
 
 /**

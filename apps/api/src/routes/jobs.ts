@@ -3,7 +3,7 @@ import { and, desc, eq, gt, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { OBJECT_TYPES } from '../genesys/types.js';
+import { OBJECT_TYPES, isStaticDataAction } from '../genesys/types.js';
 import { db, schema } from '../lib/db.js';
 import { enqueuePorting } from '../lib/queue.js';
 import { getEnvironment, HttpError } from '../lib/repo.js';
@@ -136,6 +136,13 @@ export async function jobRoutes(app: FastifyInstance) {
     await getEnvironment(body.sourceEnvId);
     const target = await getEnvironment(body.targetEnvId);
     if (!target.allowAsTarget) throw new HttpError(400, `${target.name} non è abilitato come target`);
+    const staticPorted = body.items.filter((i) => i.action === 'port' && isStaticDataAction(i));
+    if (staticPorted.length) {
+      throw new HttpError(
+        400,
+        `Data Actions predefinite di Genesys, non portabili (si usa quella del target): ${staticPorted.map((i) => i.name).join(', ')}`,
+      );
+    }
     if (!body.items.some((i) => i.action === 'port')) throw new HttpError(400, 'Nessun oggetto da portare');
 
     const keys = new Set(body.items.map((i) => `${i.type}:${i.id}`.toLowerCase()));

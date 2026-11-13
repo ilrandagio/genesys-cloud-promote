@@ -67,6 +67,8 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   della Data Table si copiano anche le righe: quelle con la stessa chiave sul target vengono aggiornate, quelle presenti
   solo sul target restano invariate (nessuna cancellazione). I valori sono copiati così come sono: eventuali ID di
   oggetti del sorgente scritti nelle celle non vengono rimappati. Richiede Terraform 1.5 o successivo.
+- **Data Actions predefinite di Genesys** (statiche, tag *predefinita*): esistono in ogni org con la loro Integration e
+  non si possono creare né modificare, quindi non si portano: si usa quella del target (azione *Porta* non disponibile).
 - **Le Contact Lists si portano senza contatti**: viene creata la struttura (colonne, numeri, Attempt Limit), i dati non escono dal sorgente.
 - **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
   testo delle Responses vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,

@@ -173,6 +173,14 @@ export interface TargetSettings {
   phone?: string;
 }
 
+/**
+ * Data Action predefinita di Genesys Cloud (statica, ID "static…"): esiste in ogni org con la sua Integration,
+ * non si può creare né modificare; si usa sempre quella del target
+ */
+export function isStaticDataAction(o: { type: string; id: string }): boolean {
+  return o.type === 'dataaction' && o.id.toLowerCase().startsWith('static');
+}
+
 export type PortAction = 'port' | 'reuse' | 'skip';
 
 /** Elemento scelto dall'utente per il job di porting */

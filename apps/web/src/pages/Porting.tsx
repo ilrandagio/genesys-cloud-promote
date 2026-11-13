@@ -4,6 +4,7 @@ import {
   Alert,
   App,
   Button,
+  Checkbox,
   Card,
   Col,
   Drawer,
@@ -120,6 +121,8 @@ export default function PortingPage() {
   const [targetSettings, setTargetSettings] = useSessionState<Map<string, TargetSettings>>('targetSettings', new Map(), mapCodec());
   const [includeDivisions, setIncludeDivisions] = useSessionState('includeDivisions', false);
   const [onlySelected, setOnlySelected] = useSessionState('onlySelected', false);
+  /** Data Tables per cui portare anche le righe (opzionale, di default solo la struttura) */
+  const [datatableRows, setDatatableRows] = useSessionState<Map<string, boolean>>('datatableRows', new Map(), mapCodec());
   const [actionFilter, setActionFilter] = useSessionState<PortAction | 'all'>('actionFilter', 'all');
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
   const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>('plan', undefined);
@@ -250,13 +253,14 @@ export default function PortingPage() {
           targetStatus: n.target.status,
           targetId: n.target.id,
           ...(n.settings ? { targetSettings: targetSettings.get(keyOf(n)) ?? {} } : {}),
+          ...(n.type === 'datatable' && datatableRows.get(keyOf(n)) ? { includeRows: true } : {}),
         });
       }
       n.children.forEach(walk);
     };
     trees?.forEach(walk);
     return [...out.values()];
-  }, [trees, actions, targetSettings]);
+  }, [trees, actions, targetSettings, datatableRows]);
 
   /** Archi dell'albero ("from" usa "to"): il server li usa per l'ordine di creazione (depends_on) */
   const edges = useMemo(() => {
@@ -281,7 +285,7 @@ export default function PortingPage() {
       JSON.stringify([
         sourceId,
         targetId,
-        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '', i.targetSettings ?? null]),
+        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '', i.targetSettings ?? null, i.includeRows ?? false]),
       ]),
     [sourceId, targetId, items],
   );
@@ -771,7 +775,24 @@ export default function PortingPage() {
                         ]}
                       />
                     );
-                    if (!n.settings || effectiveAction(n as DependencyNode, actions.get(keyOf(n))) !== 'port') return action;
+                    const porting = effectiveAction(n as DependencyNode, actions.get(keyOf(n))) === 'port';
+                    // Data Table: di default solo la struttura; le righe sono opzionali
+                    if (n.type === 'datatable' && porting) {
+                      return (
+                        <Space direction="vertical" size={4}>
+                          {action}
+                          <Tooltip title="Copia anche le righe: quelle con la stessa chiave sul target vengono aggiornate, quelle presenti solo sul target restano. I valori sono copiati così come sono.">
+                            <Checkbox
+                              checked={!!datatableRows.get(keyOf(n))}
+                              onChange={(e) => setDatatableRows(new Map(datatableRows).set(keyOf(n), e.target.checked))}
+                            >
+                              Porta anche i dati (righe)
+                            </Checkbox>
+                          </Tooltip>
+                        </Space>
+                      );
+                    }
+                    if (!n.settings || !porting) return action;
                     // Campaign e Queue: Site, Edge Group, email e numero si scelgono sul target
                     return (
                       <Space direction="vertical" size={4}>

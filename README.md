@@ -63,6 +63,10 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   quelle del target. Un Role o una Division non disponibili sul target fermano la simulazione con l'elenco.
 - **Gli utenti non si portano mai**: né come membri od owner di Groups e Queues, né come assegnatari dei Roles. Un Role
   con una condizione su un utente specifico ferma la simulazione (l'ID dell'utente è diverso sul target).
+- **Dati delle Data Tables (opzionale)**: di default si porta solo la struttura. Con *Porta anche i dati (righe)* sulla riga
+  della Data Table si copiano anche le righe: quelle con la stessa chiave sul target vengono aggiornate, quelle presenti
+  solo sul target restano invariate (nessuna cancellazione). I valori sono copiati così come sono: eventuali ID di
+  oggetti del sorgente scritti nelle celle non vengono rimappati. Richiede Terraform 1.5 o successivo.
 - **Le Contact Lists si portano senza contatti**: viene creata la struttura (colonne, numeri, Attempt Limit), i dati non escono dal sorgente.
 - **Canned Response Assets**: il file viene scaricato dal sorgente e caricato sul target. I link all'asset presenti nel
   testo delle Responses vengono riscritti con l'URL dell'asset sul target: se l'asset è già sul target si usa il suo URL,
@@ -236,7 +240,7 @@ Le migrazioni del DB partono da sole all'avvio dell'API.
 - **Dipendenze non gestite** (Users, Groups, Divisions, Data Tables, Bots…) sono mostrate in analisi ma non portate:
   vanno verificate a mano sul target.
 - **Match per nome**: oggetti con lo stesso nome in Divisions diverse non sono distinti.
-- **Data Tables**: viene portata la struttura della tabella, non le righe.
+- **Data Tables**: di default viene portata la struttura; le righe solo se richiesto (vedi sopra).
 - **Flow**: si porta l'ultima versione pubblicata; la Dependency Tracking API richiede che il flow sia pubblicato.
 - Va validato su org reali il formato dell'export (nomi delle label, riferimenti tra risorse) con la versione
   del provider in uso: la selezione delle risorse è in `worker/exportConfig.ts`.

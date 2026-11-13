@@ -12,6 +12,7 @@ import { getEnvironment } from '../lib/repo.js';
 import { packArtifact, unpackArtifact } from './artifact.js';
 import {
   alignWebDeploymentVersions,
+  applyDataTableRows,
   applyGroupRoles,
   checkRoleUserConditions,
   applyQueueMembership,
@@ -236,6 +237,9 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const extraImports: { addr: string; id: string }[] = [];
   await applyGroupRoles(cfg, addresses, new GenesysClient(sourceEnv), targetIds, sameJobRefs, extraImports, log.info);
 
+  // Data Tables con "Porta anche i dati": righe del sorgente, quelle già sul target importate e aggiornate
+  await applyDataTableRows(cfg, addresses, new GenesysClient(sourceEnv), targetClient, log.info);
+
   // Wrap-up code mappings: unione di sorgente e target, già con gli ID del target
   for (const it of singletons) {
     const tfType = CATALOG[it.type].tfType;
@@ -297,6 +301,15 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   for (const { addr, id } of extraImports) {
     log.info(`Import di ${addr} nello state locale (Roles attuali del Group sul target)`);
     await tfOrThrow(['import', '-no-color', '-input=false', addr, id], exportDir, tgtCreds, log.line);
+  }
+
+  // Blocchi import (righe delle Data Tables): servono Terraform 1.5 o successivo
+  if (Array.isArray(cfg.import) && cfg.import.length) {
+    const ver = await tfOrThrow(['version', '-json'], exportDir, tgtCreds, () => {});
+    const v = (/"terraform_version"\s*:\s*"([\d.]+)"/.exec(ver.output)?.[1] ?? '0.0.0').split('.').map(Number);
+    if (v[0] < 1 || (v[0] === 1 && v[1] < 5)) {
+      throw new Error(`Portare i dati delle Data Tables richiede Terraform 1.5 o successivo (installato: ${v.join('.')})`);
+    }
   }
 
   // ---- 4. Piano salvato ----

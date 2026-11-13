@@ -485,3 +485,67 @@ export function checkRoleUserConditions(cfg: TfJson) {
     );
   }
 }
+
+interface RowsReader extends Reader {
+  listAll<T = any>(path: string): Promise<T[]>;
+}
+
+/**
+ * Data Tables portate con "Porta anche i dati": le righe del sorgente diventano risorse
+ * genesyscloud_architect_datatable_row (chiave + properties_json). Le righe con la stessa chiave già presenti
+ * sul target vengono importate con blocchi `import` (un solo plan, niente import uno per uno) e aggiornate;
+ * le righe che esistono solo sul target non vengono toccate (nessuna cancellazione). I valori sono copiati
+ * così come sono: eventuali ID di oggetti del sorgente scritti nelle celle non vengono rimappati.
+ */
+/** Testo letterale in una stringa della configurazione JSON di Terraform: "${" e "%{" non devono diventare espressioni */
+const tfLiteral = (v: string) => v.replace(/\$\{/g, () => '$${').replace(/%\{/g, () => '%%{');
+
+export async function applyDataTableRows(
+  cfg: TfJson,
+  addresses: Map<PortItem, string>,
+  source: RowsReader,
+  target: RowsReader,
+  log: Log,
+) {
+  const tfType = 'genesyscloud_architect_datatable_row';
+  const tableType = CATALOG.datatable.tfType;
+  for (const [it, addr] of addresses) {
+    if (it.type !== 'datatable' || !it.includeRows) continue;
+    const rows = await source.listAll<Record<string, unknown>>(
+      `/api/v2/flows/datatables/${encodeURIComponent(it.id)}/rows?showbrief=false`,
+    );
+    const onTarget = new Set(
+      it.targetId
+        ? (
+            await target.listAll<{ key: string }>(
+              `/api/v2/flows/datatables/${encodeURIComponent(it.targetId)}/rows?showbrief=true`,
+            )
+          ).map((r) => String(r.key))
+        : [],
+    );
+    const tableLabel = addr.slice(tableType.length + 1);
+    cfg.resource ??= {};
+    cfg.resource[tfType] ??= {};
+    cfg.import ??= [];
+    let updated = 0;
+    rows.forEach((row, i) => {
+      const { key, ...properties } = row;
+      const keyValue = String(key);
+      const label = `${tableLabel}__row_${i + 1}`;
+      cfg.resource![tfType][label] = {
+        datatable_id: `\${${addr}.id}`,
+        key_value: tfLiteral(keyValue),
+        properties_json: tfLiteral(JSON.stringify(properties)),
+      };
+      if (onTarget.has(keyValue)) {
+        cfg.import.push({ to: `${tfType}.${label}`, id: tfLiteral(`${it.targetId}/${keyValue}`) });
+        updated++;
+      }
+    });
+    log(
+      `Data Table "${it.name}": ${rows.length} righe portate (${rows.length - updated} nuove, ${updated} già presenti ` +
+        `sul target e aggiornate); le righe presenti solo sul target restano invariate`,
+    );
+  }
+  if (Array.isArray(cfg.import) && !cfg.import.length) delete cfg.import;
+}

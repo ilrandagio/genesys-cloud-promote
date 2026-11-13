@@ -138,6 +138,7 @@ export interface PortItem {
   targetStatus: TargetStatus;
   targetId?: string;
   targetSettings?: TargetSettings;
+  includeRows?: boolean;
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';

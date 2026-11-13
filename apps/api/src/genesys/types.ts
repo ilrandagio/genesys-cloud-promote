@@ -182,4 +182,6 @@ export interface PortItem extends GcObjectRef {
   targetId?: string;
   /** Solo Campaign e Queue portate: valori del target scelti dall'utente */
   targetSettings?: TargetSettings;
+  /** Solo Data Table portate: porta anche le righe (dati) */
+  includeRows?: boolean;
 }

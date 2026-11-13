@@ -17,6 +17,7 @@ const itemSchema = z.object({
   action: z.enum(['port', 'reuse', 'skip']),
   targetStatus: z.enum(['missing', 'same', 'different', 'present']),
   targetId: z.string().optional(),
+  includeRows: z.boolean().optional(),
   targetSettings: z
     .object({
       siteId: z.string().optional(),

@@ -64,6 +64,8 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 - **Work Teams**: i membri (`member_ids`) non vengono esportati, sul target restano quelli presenti.
 - **Riferimenti scoperti**: se un oggetto portato cita un oggetto che non esiste sul target e non viene portato, la
   simulazione si ferma con l'elenco (prima era solo un avviso e l'errore arrivava in esecuzione).
+- **Analisi non più attuale**: se un oggetto da creare nel frattempo esiste sul target, o se nella configurazione resta
+  l'ID di un oggetto del sorgente che non compare nell'analisi, la simulazione si ferma e chiede di rifare l'analisi.
 - **Gli utenti non si portano mai**: né come membri od owner di Groups e Queues, né come assegnatari dei Roles. Un Role
   con una condizione su un utente specifico ferma la simulazione (l'ID dell'utente è diverso sul target).
 - **Dati delle Data Tables (opzionale)**: di default si porta solo la struttura. Con *Porta anche i dati (righe)* sulla riga

@@ -2,7 +2,9 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { GenesysClient, PermissionError } from '../genesys/client.js';
-import { CATALOG, WRAPUP_MAPPINGS_ID } from '../genesys/catalog.js';
+import { CATALOG, WRAPUP_MAPPINGS_ID, listObjects } from '../genesys/catalog.js';
+import { lazyIdIndex } from '../genesys/dependencies.js';
+import { ID_TOKEN_G, idKey } from '../genesys/ids.js';
 import { awsRegion } from '../genesys/regions.js';
 import type { PortItem } from '../genesys/types.js';
 import { and, eq, sql } from 'drizzle-orm';
@@ -248,6 +250,29 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
 
   // Link agli asset nei testi delle canned response: URL interi, prima della rimappatura dei GUID
   const targetClient = new GenesysClient(targetEnv);
+
+  // Analisi non più attuale: un oggetto da creare (mancante al momento dell'analisi) ora esiste sul target,
+  // per esempio creato da un'esecuzione precedente. Crearlo di nuovo fallirebbe ("name is currently in use")
+  // e l'azione giusta potrebbe essere un'altra: si chiede di rifare l'analisi
+  {
+    const byType = new Map<string, any[]>();
+    const nowPresent: string[] = [];
+    for (const it of toExport.filter((i) => !i.targetId && !CATALOG[i.type].singleton)) {
+      if (!byType.has(it.type)) byType.set(it.type, await listObjects(targetClient, it.type).catch(() => []));
+      const hit = byType.get(it.type)!.find(
+        (o) =>
+          String(o.name ?? '').toLowerCase() === it.name.toLowerCase() &&
+          (it.type !== 'flow' || !it.subtype || String(o.type ?? '').toLowerCase() === it.subtype.toLowerCase()),
+      );
+      if (hit) nowPresent.push(`${CATALOG[it.type].label} "${it.name}"`);
+    }
+    if (nowPresent.length) {
+      throw new Error(
+        `L'analisi non è più attuale: questi oggetti risultavano mancanti ma ora esistono sul target: ` +
+          `${nowPresent.join(', ')}. Rifare l'analisi e poi la simulazione.`,
+      );
+    }
+  }
   await rewriteAssetLinks(cfg, items, addresses, targetClient, log.info);
 
   // Configurazione: ID del target oppure riferimento alla risorsa creata nel job (mai sé stessa, mai i percorsi)
@@ -317,6 +342,35 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
         `${dangling.map((i) => `${CATALOG[i.type].label} "${i.name}"`).join(', ')}. ` +
         `Impostarli su "Porta" nell'albero oppure crearli sul target, poi rifare la simulazione.`,
     );
+  }
+
+  // Riferimenti a oggetti del sorgente che non sono nell'analisi (analisi vecchia o riferimento non
+  // riconosciuto): i loro ID resterebbero quelli del sorgente e Genesys rifiuterebbe la risorsa
+  {
+    const index = await lazyIdIndex(new GenesysClient(sourceEnv))();
+    const analyzed = new Set(items.map((i) => idKey(i.id)));
+    const unknown = new Map<string, Set<string>>();
+    for (const [type, labels] of Object.entries(cfg.resource ?? {})) {
+      // Righe delle Data Tables: dati copiati così come sono, per scelta
+      if (type === 'genesyscloud_architect_datatable_row') continue;
+      for (const [label, attrs] of Object.entries(labels as Record<string, unknown>)) {
+        const text = JSON.stringify(attrs, (k, v) => (k === 'filepath' || k === 'file_content_hash' || k === 'filename' ? undefined : v));
+        for (const token of text.match(ID_TOKEN_G) ?? []) {
+          const entry = index.byId.get(idKey(token));
+          if (!entry || entry.type === 'division' || analyzed.has(idKey(entry.id))) continue;
+          const key = `${CATALOG[entry.type].label} "${entry.name}"`;
+          if (!unknown.has(key)) unknown.set(key, new Set());
+          unknown.get(key)!.add(`${type}.${label}`);
+        }
+      }
+    }
+    if (unknown.size) {
+      throw new Error(
+        `Oggetti del sorgente citati ma non presenti nell'analisi: ` +
+          [...unknown].map(([obj, by]) => `${obj} (in ${[...by].slice(0, 3).join(', ')}${by.size > 3 ? '…' : ''})`).join('; ') +
+          `. Rifare l'analisi, così compaiono nell'albero con la loro azione, poi la simulazione.`,
+      );
+    }
   }
 
   await writeFile(cfgPath, JSON.stringify(cfg, null, 2));

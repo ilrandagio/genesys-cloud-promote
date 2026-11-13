@@ -158,6 +158,14 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_group',
     comparable: true,
   },
+  team: {
+    group: 'People & Permissions',
+    label: 'Work Team',
+    listPath: '/api/v2/teams',
+    getPath: '/api/v2/teams/{id}',
+    tfType: 'genesyscloud_team',
+    comparable: true,
+  },
   role: {
     group: 'People & Permissions',
     label: 'Role',

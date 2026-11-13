@@ -44,7 +44,7 @@ const NO_DIVISION = '__none__';
 
 /** Tipi che in Genesys Cloud possono appartenere a una divisione */
 const DIVISIONED = new Set<ObjectType>(['flow', 'queue', 'schedule', 'schedulegroup', 'wrapupcode', 'script', 'datatable', 'emergencygroup',
-  'campaign', 'messagingcampaign', 'contactlist', 'contactlistfilter', 'dnclist', 'callanalysisresponseset', 'ruleset', 'campaignrule', 'callabletimeset', 'responseasset', 'skillgroup']);
+  'campaign', 'messagingcampaign', 'contactlist', 'contactlistfilter', 'dnclist', 'callanalysisresponseset', 'ruleset', 'campaignrule', 'callabletimeset', 'responseasset', 'skillgroup', 'team']);
 
 interface TreeRow extends Omit<DependencyNode, 'children'> {
   rowKey: string;

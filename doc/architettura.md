@@ -120,7 +120,7 @@ L'analisi legge direttamente la Platform API (nessuno stato, nessuna scrittura) 
 | --- | --- |
 | Flow | Dependency Tracking API **più** configurazione del flow (`latestconfiguration`), unite |
 | Script | JSON completo dello script (export), ricerca degli ID |
-| Queue | In-queue Flow, Whisper Prompt, ACD Skills del bullseye, Wrap-up Codes |
+| Queue | In-queue Flow, Whisper Prompt, ACD Skills del bullseye, Wrap-up Codes, più ogni oggetto noto citato per ID (Skill Expression Groups, Groups e Work Teams degli anelli del bullseye, Scripts…); i membri della Queue esclusi |
 | Data Action | Integration |
 | Schedule Group | Schedule |
 | Skill Expression Group | ACD Skills e Languages citati per nome nelle condizioni (`skillConditions`) |
@@ -146,7 +146,7 @@ Gli ID interni (pagine, componenti, task, azioni, variabili) e l'oggetto stesso 
 
 ### Tipi supportati e regole di sicurezza
 
-Il catalogo comprende 37 tipi, raggruppati nel selettore dell'interfaccia. Per i tipi che non hanno un'analisi dedicata (Outbound, Messaging, Canned Responses) le dipendenze si ricavano cercando nel dettaglio dell'oggetto gli ID degli oggetti noti dell'org sorgente.
+Il catalogo comprende 38 tipi, raggruppati nel selettore dell'interfaccia. Per i tipi che non hanno un'analisi dedicata (Outbound, Messaging, Canned Responses) le dipendenze si ricavano cercando nel dettaglio dell'oggetto gli ID degli oggetti noti dell'org sorgente.
 
 | Gruppo | Tipi |
 | --- | --- |
@@ -156,7 +156,7 @@ Il catalogo comprende 37 tipi, raggruppati nel selettore dell'interfaccia. Per i
 | Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
 | Messaging | Messenger Configurations, Messenger Deployments, Supported Content |
 | Canned Responses | Libraries, Responses, Assets |
-| People & Permissions | Divisions, Groups (con i Roles assegnati), Roles |
+| People & Permissions | Divisions, Groups (con i Roles assegnati), Work Teams, Roles |
 
 Durante la simulazione, dopo la selezione delle risorse, il worker applica regole fisse alla configurazione esportata:
 
@@ -186,7 +186,7 @@ La simulazione prepara e salva esattamente ciò che verrà scritto sul target, s
    - oggetti portati nello stesso job → riferimento Terraform `${risorsa.id}`;
    - ID scritti nei file esportati (JSON degli script, YAML dei flow) → ID del target, oppure segnaposto `{{gcp_N}}` riempito da Terraform con `substitutions` per gli oggetti creati nel job.
 4. **Ordine di creazione**: ogni arco dell'albero (A usa B) tra oggetti portati diventa un `depends_on`; un ciclo emerge qui, non durante l'esecuzione.
-5. **Controlli**: Divisions referenziate ma assenti sul target bloccano la simulazione; i riferimenti a oggetti saltati e assenti vengono segnalati.
+5. **Controlli**: Divisions referenziate ma assenti sul target bloccano la simulazione; anche un riferimento a un oggetto che non esiste sul target e non viene portato (azione *Salta*) ferma la simulazione con l'elenco, invece di far fallire l'esecuzione.
 6. **Import** degli oggetti già presenti sul target nello state locale (sola lettura), così vengono aggiornati e non duplicati.
 7. **Piano salvato**: `terraform plan -out`, poi `terraform show -json` per il riepilogo (da creare, aggiornare, cancellare, ricreare, già uguali sul target: un oggetto scelto ma identico sul target compare come "già uguale", non sparisce dal riepilogo).
 8. **Blocco**: un piano che cancella o ricrea oggetti, o che non contiene modifiche, è *non eseguibile* (ricreare un oggetto ne cambia l'ID).

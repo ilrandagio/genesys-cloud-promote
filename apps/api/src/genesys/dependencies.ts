@@ -41,6 +41,7 @@ const REFERENCE_TYPES: ObjectType[] = (
     'webconfig',
     'webdeployment',
     'supportedcontent',
+    'team',
     'skillgroup',
     'group',
     'role',
@@ -318,13 +319,21 @@ async function directDependencies(
       if (q.whisperPrompt?.id) {
         deps.push({ type: 'prompt', rawType: 'USERPROMPT', id: q.whisperPrompt.id, name: q.whisperPrompt.name ?? q.whisperPrompt.id });
       }
-      for (const rule of q.bullseye?.rings ?? []) {
-        for (const s of rule.skillsToRemove ?? []) {
-          deps.push({ type: 'skill', rawType: 'ACDSKILL', id: s.id, name: s.name ?? s.id });
+      for (const ring of q.bullseye?.rings ?? []) {
+        // Skills da togliere a ogni anello (actions.skillsToRemove; in passato anche al primo livello)
+        for (const s of [...(ring.actions?.skillsToRemove ?? []), ...(ring.skillsToRemove ?? [])]) {
+          if (s?.id) deps.push({ type: 'skill', rawType: 'ACDSKILL', id: s.id, name: s.name ?? s.id });
         }
       }
       const wrapups = await client.listAll(`/api/v2/routing/queues/${obj.id}/wrapupcodes`);
       for (const w of wrapups) deps.push({ type: 'wrapupcode', rawType: 'ACDWRAPUPCODE', id: w.id, name: w.name });
+      // Tutti gli altri oggetti noti citati per ID (Skill Expression Groups e Groups negli anelli del bullseye,
+      // Scripts predefiniti, ecc.). I membri della Queue (memberGroups) non si portano: esclusi
+      const { memberGroups: _members, ...rest } = q;
+      const seen = new Set(deps.map((x) => `${x.type}:${x.id}`.toLowerCase()));
+      for (const x of scanReferences(rest, await idIndex(), obj, 'id')) {
+        if (!seen.has(`${x.type}:${x.id}`.toLowerCase())) deps.push(x);
+      }
       return deps;
     }
 

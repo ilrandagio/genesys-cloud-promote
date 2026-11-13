@@ -136,6 +136,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
         ]
       : []),
     ...(toExport.some((i) => i.type === 'group') ? ['genesyscloud_group.member_ids', 'genesyscloud_group.owner_ids'] : []),
+    ...(toExport.some((i) => i.type === 'team') ? ['genesyscloud_team.member_ids'] : []),
   ];
 
   // ---- 1. Export dal sorgente ----
@@ -304,10 +305,18 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
         `Crearle sul target oppure rianalizzare con "Includi divisioni" e portarle.`,
     );
   }
+  // Riferimenti a oggetti che non esistono sul target e non vengono portati: Genesys rifiuterebbe la
+  // creazione in esecuzione (es. "Skill … does not exist"). Si ferma la simulazione, che non scrive nulla
   const sourceIds = new Set(items.filter((i) => i.action !== 'port').map((i) => i.id.toLowerCase()));
-  for (const g of [...remainingGuids(cfg)].filter((g) => sourceIds.has(g))) {
-    const it = items.find((i) => i.id.toLowerCase() === g)!;
-    log.info(`ATTENZIONE: ${it.type} "${it.name}" è referenziato ma non esiste sul target e non viene portato`);
+  const dangling = [...remainingGuids(cfg)]
+    .filter((g) => sourceIds.has(g))
+    .map((g) => items.find((i) => i.id.toLowerCase() === g)!);
+  if (dangling.length) {
+    throw new Error(
+      `Oggetti referenziati che non esistono sul target e non vengono portati: ` +
+        `${dangling.map((i) => `${CATALOG[i.type].label} "${i.name}"`).join(', ')}. ` +
+        `Impostarli su "Porta" nell'albero oppure crearli sul target, poi rifare la simulazione.`,
+    );
   }
 
   await writeFile(cfgPath, JSON.stringify(cfg, null, 2));

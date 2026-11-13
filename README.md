@@ -38,7 +38,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 | Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
 | Messaging | Messenger Configurations, Messenger Deployments, Supported Content |
 | Canned Responses | Libraries, Responses, Assets |
-| People & Permissions | Divisions, Groups (con i Roles assegnati), Roles |
+| People & Permissions | Divisions, Groups (con i Roles assegnati), Work Teams, Roles |
 
 ### Regole di sicurezza applicate automaticamente
 
@@ -61,6 +61,9 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   costruito dal worker): Role riusato o portato nello stesso rilascio, Division abbinata per nome (`*` = tutte). Le
   assegnazioni del Group sul target vengono sostituite da quelle del sorgente; un Group senza Roles sul sorgente non tocca
   quelle del target. Un Role o una Division non disponibili sul target fermano la simulazione con l'elenco.
+- **Work Teams**: i membri (`member_ids`) non vengono esportati, sul target restano quelli presenti.
+- **Riferimenti scoperti**: se un oggetto portato cita un oggetto che non esiste sul target e non viene portato, la
+  simulazione si ferma con l'elenco (prima era solo un avviso e l'errore arrivava in esecuzione).
 - **Gli utenti non si portano mai**: né come membri od owner di Groups e Queues, né come assegnatari dei Roles. Un Role
   con una condizione su un utente specifico ferma la simulazione (l'ID dell'utente è diverso sul target).
 - **Dati delle Data Tables (opzionale)**: di default si porta solo la struttura. Con *Porta anche i dati (righe)* sulla riga

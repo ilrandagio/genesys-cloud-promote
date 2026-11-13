@@ -189,7 +189,19 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // ---- 2. Selezione risorse e rimappatura ID ----
   const fixedPaths = normalizeFilePaths(cfg);
   if (fixedPaths) log.info(`Percorsi dei file con "\\" normalizzati con "/": ${fixedPaths}`);
-  const addresses = selectResources(cfg, toExport);
+  // Data Actions omonime in Integrations diverse: si sceglie quella con l'integration_id del sorgente
+  const match = new Map<PortItem, Record<string, string>>();
+  for (const it of toExport.filter((i) => i.type === 'dataaction')) {
+    try {
+      const a = await new GenesysClient(sourceEnv).get<{ integrationId?: string }>(
+        CATALOG.dataaction.getPath.replace('{id}', encodeURIComponent(it.id)),
+      );
+      if (a.integrationId) match.set(it, { integration_id: a.integrationId });
+    } catch {
+      // dettaglio non leggibile: abbinamento solo per nome
+    }
+  }
+  const addresses = selectResources(cfg, toExport, match);
   const missing = toExport.filter((i) => !addresses.has(i));
   if (missing.length) {
     throw new Error(`Oggetti non trovati nell'export: ${missing.map((m) => `${m.type} "${m.name}"`).join(', ')}`);

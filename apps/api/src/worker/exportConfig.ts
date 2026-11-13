@@ -68,12 +68,16 @@ const simplify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
  */
 export function includeFilter(item: PortItem): string {
   const loose = item.name.replace(/[^A-Za-z0-9]/g, '.');
-  // Le label dei flow possono avere il tipo come prefisso (es. INBOUNDCALL_Main_IVR): niente ancora iniziale
-  return item.type === 'flow' ? `${CATALOG[item.type].tfType}::${loose}` : `${CATALOG[item.type].tfType}::^_?${loose}`;
+  // Niente ancora iniziale dove la label ha un prefisso prima del nome:
+  // - Flows: il tipo (es. INBOUNDCALL_Main_IVR);
+  // - Data Actions: la categoria (es. Isybank_FDI_WS_authenticate; per le azioni statiche anche l'integrazione).
+  // Eventuali omonimi parziali inclusi dal filtro vengono scartati da selectResources (confronto sul nome esatto).
+  const prefixed = item.type === 'flow' || item.type === 'dataaction';
+  return prefixed ? `${CATALOG[item.type].tfType}::${loose}` : `${CATALOG[item.type].tfType}::^_?${loose}`;
 }
 
 /** Trova l'indirizzo Terraform (tipo.label) dell'oggetto nella configurazione esportata */
-export function findAddress(cfg: TfJson, item: PortItem): string | undefined {
+export function findAddress(cfg: TfJson, item: PortItem, match?: Record<string, string>): string | undefined {
   const tfType = CATALOG[item.type].tfType;
   const resources = cfg.resource?.[tfType] ?? {};
   for (const [label, attrs] of Object.entries(resources)) {
@@ -81,7 +85,9 @@ export function findAddress(cfg: TfJson, item: PortItem): string | undefined {
     const labelMatch =
       simplify(label) === simplify(item.name) ||
       (item.type === 'flow' && !!item.subtype && simplify(label) === simplify(`${item.subtype}_${item.name}`));
-    if (nameAttr ? nameAttr.toLowerCase() === item.name.toLowerCase() : labelMatch) {
+    // Attributi che distinguono gli omonimi (es. integration_id per Data Actions con lo stesso nome)
+    const same = Object.entries(match ?? {}).every(([k, v]) => String(attrs?.[k] ?? '').toLowerCase() === v.toLowerCase());
+    if ((nameAttr ? nameAttr.toLowerCase() === item.name.toLowerCase() : labelMatch) && same) {
       return `${tfType}.${label}`;
     }
   }
@@ -92,10 +98,14 @@ export function findAddress(cfg: TfJson, item: PortItem): string | undefined {
  * Tiene solo le risorse scelte dall'utente (il filtro dell'export può includere omonimi parziali).
  * Restituisce gli indirizzi mantenuti per ogni item.
  */
-export function selectResources(cfg: TfJson, items: PortItem[]): Map<PortItem, string> {
+export function selectResources(
+  cfg: TfJson,
+  items: PortItem[],
+  match?: Map<PortItem, Record<string, string>>,
+): Map<PortItem, string> {
   const found = new Map<PortItem, string>();
   for (const it of items) {
-    const addr = findAddress(cfg, it);
+    const addr = findAddress(cfg, it, match?.get(it));
     if (addr) found.set(it, addr);
   }
   const keep = new Set(found.values());

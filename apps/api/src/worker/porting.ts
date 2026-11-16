@@ -311,11 +311,24 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // File esportati (JSON degli script, YAML dei flow): ID scritti in chiaro nel contenuto
   const { report: fileReport, missingFiles } = await remapReferencedFiles(cfg, exportDir, targetIds, sameJobRefs);
   for (const f of missingFiles) log.info(`ATTENZIONE: file esportato non trovato, ID non sostituiti: ${f}`);
+  // Per ogni file (JSON degli Scripts, YAML dei Flows): quali oggetti sono stati sostituiti e con cosa
+  const byId = new Map(items.map((i) => [i.id.toLowerCase(), i]));
+  const describe = (id: string) => {
+    const it = byId.get(id);
+    return it ? `${CATALOG[it.type].label} "${it.name}"` : `Division o oggetto ${id}`;
+  };
   for (const r of fileReport) {
     log.info(
       `ID sostituiti in ${r.file}: ${r.replaced} con ID del target` +
         (r.placeholders ? `, ${r.placeholders} con riferimenti a oggetti creati in questo porting` : ''),
     );
+    for (const d of r.details) {
+      log.info(
+        `  - ${describe(d.sourceId)}: ${d.sourceId} → ` +
+          (d.sameJob ? `creato in questo rilascio (${d.target})` : d.target) +
+          (d.count > 1 ? ` (${d.count} occorrenze)` : ''),
+      );
+    }
   }
 
   // Ordine di creazione dall'albero delle dipendenze

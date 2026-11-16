@@ -206,13 +206,21 @@ export function ensureProvider(cfg: TfJson, version: string) {
  *   riempie tramite l'attributo "substitutions" della risorsa (così l'ordine di creazione è garantito).
  * Restituisce, per file, quante sostituzioni sono state fatte.
  */
+/** Sostituzioni fatte in un file esportato: per ogni ID del sorgente, cosa è stato scritto al suo posto */
+export interface FileRemapReport {
+  file: string;
+  replaced: number;
+  placeholders: number;
+  details: { sourceId: string; target: string; sameJob: boolean; count: number }[];
+}
+
 export async function remapReferencedFiles(
   cfg: TfJson,
   baseDir: string,
   targetIds: Map<string, string>,
   sameJobRefs: Map<string, string>,
-): Promise<{ report: { file: string; replaced: number; placeholders: number }[]; missingFiles: string[] }> {
-  const report: { file: string; replaced: number; placeholders: number }[] = [];
+): Promise<{ report: FileRemapReport[]; missingFiles: string[] }> {
+  const report: FileRemapReport[] = [];
   const missingFiles: string[] = [];
   // ID sorgente della risorsa stessa: dentro il proprio file non va mai sostituito
   const ownIdOf = new Map([...sameJobRefs].map(([id, addr]) => [addr, id]));
@@ -237,6 +245,12 @@ export async function remapReferencedFiles(
       let replaced = 0;
       let placeholders = 0;
       const used: Record<string, string> = {};
+      const details = new Map<string, { sourceId: string; target: string; sameJob: boolean; count: number }>();
+      const note = (sourceId: string, target: string, sameJob: boolean) => {
+        const d = details.get(sourceId) ?? { sourceId, target, sameJob, count: 0 };
+        d.count++;
+        details.set(sourceId, d);
+      };
       // Si sostituiscono solo gli ID che corrispondono a oggetti dell'analisi;
       // gli ID interni (pagine, componenti, variabili...) restano invariati
       const next = content.replace(GUID_G, (g) => {
@@ -245,6 +259,7 @@ export async function remapReferencedFiles(
         const tgt = targetIds.get(key);
         if (tgt) {
           replaced++;
+          note(key, tgt, false);
           return tgt;
         }
         const addr = sameJobRefs.get(key);
@@ -253,6 +268,7 @@ export async function remapReferencedFiles(
           const name = placeholderOf.get(key)!;
           used[name] = `\${${addr}.id}`;
           placeholders++;
+          note(key, addr, true);
           return `{{${name}}}`;
         }
         return g;
@@ -266,7 +282,7 @@ export async function remapReferencedFiles(
       // impostarlo dà "Value for unconfigurable attribute"; il provider rilegge da sé il file modificato
       if (type === 'genesyscloud_flow') delete attrs.file_content_hash;
       else if (attrs.file_content_hash) attrs.file_content_hash = `\${filesha256("${hclPath(filepath)}")}`;
-      report.push({ file: filepath, replaced, placeholders });
+      report.push({ file: filepath, replaced, placeholders, details: [...details.values()] });
     }
   }
   return { report, missingFiles };

@@ -37,6 +37,21 @@ export function hclPath(p: string): string {
     .replace(/%\{/g, () => '%%{');
 }
 
+/**
+ * Flows: nel provider 1.88 file_content_hash è calcolato (non impostabile); se l'export lo scrive il plan
+ * fallisce con "Value for unconfigurable attribute". Si toglie sempre: il provider calcola l'hash dal file.
+ */
+export function dropFlowContentHash(cfg: TfJson): number {
+  let dropped = 0;
+  for (const attrs of Object.values(cfg.resource?.genesyscloud_flow ?? {}) as any[]) {
+    if (attrs && 'file_content_hash' in attrs) {
+      delete attrs.file_content_hash;
+      dropped++;
+    }
+  }
+  return dropped;
+}
+
 export function normalizeFilePaths(cfg: TfJson): number {
   let fixed = 0;
   const walk = (node: unknown): unknown => {
@@ -246,8 +261,11 @@ export async function remapReferencedFiles(
 
       await writeFile(abs, next);
       if (Object.keys(used).length) attrs.substitutions = { ...(attrs.substitutions ?? {}), ...used };
-      // L'hash del contenuto deve seguire il file modificato
-      if ('file_content_hash' in attrs) attrs.file_content_hash = `\${filesha256("${hclPath(filepath)}")}`;
+      // L'hash del contenuto deve seguire il file modificato, solo dove è un attributo impostabile e già
+      // valorizzato dall'export. Nei Flows (provider 1.88) file_content_hash è calcolato dal provider:
+      // impostarlo dà "Value for unconfigurable attribute"; il provider rilegge da sé il file modificato
+      if (type === 'genesyscloud_flow') delete attrs.file_content_hash;
+      else if (attrs.file_content_hash) attrs.file_content_hash = `\${filesha256("${hclPath(filepath)}")}`;
       report.push({ file: filepath, replaced, placeholders });
     }
   }

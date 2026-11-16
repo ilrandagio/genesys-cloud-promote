@@ -31,6 +31,7 @@ import {
   includeFilter,
   remainingGuids,
   remapConfig,
+  dropFlowContentHash,
   normalizeFilePaths,
   remapReferencedFiles,
   selectResources,
@@ -193,6 +194,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // ---- 2. Selezione risorse e rimappatura ID ----
   const fixedPaths = normalizeFilePaths(cfg);
   if (fixedPaths) log.info(`Percorsi dei file con "\\" normalizzati con "/": ${fixedPaths}`);
+  dropFlowContentHash(cfg);
   // Data Actions omonime in Integrations diverse: si sceglie quella con l'integration_id del sorgente
   const match = new Map<PortItem, Record<string, string>>();
   for (const it of toExport.filter((i) => i.type === 'dataaction')) {

@@ -279,7 +279,7 @@ Lo stesso codice gira in due configurazioni, scelte solo dalle variabili `DATABA
 | Interfaccia | `npm run dev` → http://localhost:5173 | nginx → http://localhost:8080, `/api` verso l'API |
 | Avvio | `npm run setup` poi `npm run dev` | `docker compose up --build` |
 
-In entrambi i casi un solo job alla volta: niente esecuzioni concorrenti sullo stesso target. L'immagine del worker include Terraform; il provider Genesys viene scaricato alla versione fissata da `GENESYS_PROVIDER_VERSION` e dal lock salvato nel plan. Si consiglia una versione esatta (oggi 1.88.0), da aggiornare dopo una prova su un ambiente di test: con un vincolo come ">= 1.50.0" ogni simulazione userebbe l'ultima release disponibile.
+In entrambi i casi un solo job alla volta: niente esecuzioni concorrenti sullo stesso target. L'immagine del worker include Terraform; il provider Genesys viene scaricato secondo `GENESYS_PROVIDER_VERSION` (default `>= 1.88.0`, la prima versione supportata) e l'esecuzione usa la versione registrata nel lock salvato nel plan, quindi la stessa della simulazione. Con `>=` ogni simulazione usa l'ultima release disponibile; per bloccare una versione basta indicarla esatta (es. `1.88.0`).
 
 **Configurazione (`.env`).** Segreti dell'app (`JWT_SECRET`, `ENCRYPTION_KEY`), `APP_URL`, client di login (`GENESYS_LOGIN_*`), regole di accesso e di rilascio (`GENESYS_APPLY_ROLE`, `GENESYS_APPROVER_ROLE`, elenchi email, `PLAN_TTL_HOURS`), database e coda.
 

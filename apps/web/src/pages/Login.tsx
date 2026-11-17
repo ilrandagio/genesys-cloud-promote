@@ -1,5 +1,6 @@
 import { LoginOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Space, Typography } from 'antd';
+import { appUrl } from '../api/client';
 
 export default function LoginPage() {
   const error = new URLSearchParams(window.location.search).get('loginError');
@@ -21,7 +22,7 @@ export default function LoginPage() {
             icon={<LoginOutlined />}
             block
             onClick={() => {
-              window.location.href = '/api/auth/login';
+              window.location.href = appUrl('/api/auth/login');
             }}
           >
             Accedi con Genesys Cloud

@@ -24,7 +24,7 @@ export default function App() {
   const logout = async () => {
     await api('/api/auth/logout', { method: 'POST' });
     qc.clear();
-    window.location.href = '/';
+    window.location.href = import.meta.env.BASE_URL;
   };
 
   const selected = '/' + (location.pathname.split('/')[1] || 'porting');

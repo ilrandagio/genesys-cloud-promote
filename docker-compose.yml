@@ -45,9 +45,13 @@ services:
 
   web:
     restart: unless-stopped
-    build: { context: ., dockerfile: apps/web/Dockerfile }
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        BASE_PATH: ${BASE_PATH:-/}
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-8080}:80"
     depends_on:
       - api
 

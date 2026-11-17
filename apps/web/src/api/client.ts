@@ -216,8 +216,11 @@ export class ApiError extends Error {
   }
 }
 
+/** Indirizzo nell'app: tiene conto del prefisso con cui è pubblicata (es. /promote/api/...) */
+export const appUrl = (path: string) => import.meta.env.BASE_URL.replace(/\/$/, '') + path;
+
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(appUrl(path), {
     method: init?.method ?? 'GET',
     credentials: 'include',
     headers: init?.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,

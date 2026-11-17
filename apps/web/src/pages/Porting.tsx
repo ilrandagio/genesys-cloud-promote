@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   api,
+  appUrl,
   type DependencyNode,
   type Environment,
   type GcObject,
@@ -699,7 +700,7 @@ export default function PortingPage() {
                       {n.supported && (
                         <Tooltip title="Dettaglio sul sorgente, come lo legge l'applicazione (dove l'analisi cerca i riferimenti)">
                           <a
-                            href={`/api/environments/${sourceId}/objects/${n.type}/${encodeURIComponent(n.id)}/raw`}
+                            href={appUrl(`/api/environments/${sourceId}/objects/${n.type}/${encodeURIComponent(n.id)}/raw`)}
                             target="_blank"
                             rel="noreferrer"
                           >
@@ -710,7 +711,7 @@ export default function PortingPage() {
                       {n.supported && n.target?.id && targetId && (
                         <Tooltip title="Dettaglio dell'oggetto sul target">
                           <a
-                            href={`/api/environments/${targetId}/objects/${n.type}/${encodeURIComponent(n.target.id)}/raw`}
+                            href={appUrl(`/api/environments/${targetId}/objects/${n.type}/${encodeURIComponent(n.target.id)}/raw`)}
                             target="_blank"
                             rel="noreferrer"
                           >

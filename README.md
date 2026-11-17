@@ -236,7 +236,10 @@ UI su http://localhost:8080. Qui si usano PostgreSQL e Redis veri e il worker è
 Le migrazioni del DB partono da sole all'avvio dell'API.
 I container ripartono da soli dopo un riavvio del server (`restart: unless-stopped`). Su un server:
 `APP_URL` è l'indirizzo con cui gli utenti aprono l'app (con `https://` i cookie di sessione diventano `Secure`) e il
-Redirect URI del client OAuth di login è `APP_URL/api/auth/callback`. Se la porta 8080 è occupata: `WEB_PORT=<porta>` nel `.env` (e `APP_URL` con la stessa porta). Aggiornamento: `git pull && docker compose up -d --build`.
+Redirect URI del client OAuth di login è `APP_URL/api/auth/callback`. Se la porta 8080 è occupata: `WEB_PORT=<porta>` nel `.env` (e `APP_URL` con la stessa porta). Per pubblicarla su un percorso di un altro server
+(es. `https://server/promote` dietro un server Node/Koa già sulla 443): `BASE_PATH=/promote`, `WEB_BIND=127.0.0.1`,
+`APP_URL=https://server/promote`; il server davanti inoltra `/promote/...` a `http://127.0.0.1:<WEB_PORT>` togliendo il
+prefisso. Aggiornamento: `git pull && docker compose up -d --build`.
 **Conservare `ENCRYPTION_KEY`**: senza, i client secret salvati non sono più decifrabili.
 
 ## Sviluppo

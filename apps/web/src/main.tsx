@@ -13,7 +13,7 @@ createRoot(document.getElementById('root')!).render(
     <ConfigProvider locale={itIT} theme={{ token: { colorPrimary: '#ff4f1f' } }}>
       <AntApp>
         <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
+          <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
             <App />
           </BrowserRouter>
         </QueryClientProvider>

@@ -279,6 +279,8 @@ Lo stesso codice gira in due configurazioni, scelte solo dalle variabili `DATABA
 | Interfaccia | `npm run dev` → http://localhost:5173 | nginx → http://localhost:8080, `/api` verso l'API |
 | Avvio | `npm run setup` poi `npm run dev` | `docker compose up --build` |
 
+Con Docker l'interfaccia può essere pubblicata anche su un percorso di un altro server (es. `https://server/promote`, dietro un server già esposto sulla 443): l'interfaccia viene compilata con il prefisso (`BASE_PATH`), il server davanti inoltra le richieste togliendo il prefisso e `APP_URL` lo include, così anche il Redirect URI del login (`APP_URL/api/auth/callback`). Con `WEB_BIND=127.0.0.1` la porta del container non è raggiungibile dall'esterno.
+
 In entrambi i casi un solo job alla volta: niente esecuzioni concorrenti sullo stesso target. L'immagine del worker include Terraform; il provider Genesys viene scaricato secondo `GENESYS_PROVIDER_VERSION` (default `>= 1.88.0`, la prima versione supportata) e l'esecuzione usa la versione registrata nel lock salvato nel plan, quindi la stessa della simulazione. Con `>=` ogni simulazione usa l'ultima release disponibile; per bloccare una versione basta indicarla esatta (es. `1.88.0`).
 
 **Configurazione (`.env`).** Segreti dell'app (`JWT_SECRET`, `ENCRYPTION_KEY`), `APP_URL`, client di login (`GENESYS_LOGIN_*`), regole di accesso e di rilascio (`GENESYS_APPLY_ROLE`, `GENESYS_APPROVER_ROLE`, elenchi email, `PLAN_TTL_HOURS`), database e coda.

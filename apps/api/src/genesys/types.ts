@@ -149,6 +149,9 @@ export interface EmailAddress {
   address: string;
 }
 
+/** Indirizzi di messaggistica in uscita di una Queue */
+export type MessagingKind = 'sms' | 'whatsapp' | 'open';
+
 /** Impostazioni del sorgente che non si portano: si sceglie il valore del target */
 export interface SourceSettings {
   site?: NamedRef;
@@ -157,12 +160,15 @@ export interface SourceSettings {
   emailAll?: EmailAddress[];
   /** Numero in uscita (Queue: Calling Party Number; Campaign: Caller Address) */
   phone?: { source?: string; target?: string; required: boolean };
+  /** Queue: numero SMS, WhatsApp e Open Messaging in uscita del sorgente */
+  messaging?: Partial<Record<MessagingKind, NamedRef>>;
   /** Valori attuali dell'oggetto sul target, se esiste già: proposti come scelta */
   targetCurrent?: {
     site?: NamedRef;
     edgeGroup?: NamedRef;
     emailDefault?: EmailAddress;
     emailAll?: EmailAddress[];
+    messaging?: Partial<Record<MessagingKind, NamedRef>>;
   };
 }
 
@@ -173,6 +179,8 @@ export interface TargetSettings {
   emailDefault?: { domainId: string; routeId: string };
   emailAll?: { domainId: string; routeId: string }[];
   phone?: string;
+  /** Queue: indirizzi di messaggistica del target ("" = nessuno) */
+  messaging?: Partial<Record<MessagingKind, string>>;
 }
 
 /**

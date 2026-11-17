@@ -235,6 +235,7 @@ export default function PortingPage() {
               emailDefault: current.emailDefault ?? proposed.emailDefault,
               emailAll: current.emailAll?.length ? current.emailAll : proposed.emailAll,
               phone: current.phone ?? proposed.phone,
+              messaging: { ...proposed.messaging, ...current.messaging },
             }
           : proposed;
       if (JSON.stringify(merged) === JSON.stringify(current)) continue;

@@ -1,5 +1,8 @@
 import { Input, Select, Space, Tooltip } from 'antd';
-import type { EmailAddress, NamedRef, SourceSettings, TargetOptions, TargetSettings } from '../api/client';
+import type { EmailAddress, MessagingKind, NamedRef, SourceSettings, TargetOptions, TargetSettings } from '../api/client';
+
+const MESSAGING_LABELS: Record<MessagingKind, string> = { sms: 'SMS', whatsapp: 'WhatsApp', open: 'Open Messaging' };
+const KINDS: MessagingKind[] = ['sms', 'whatsapp', 'open'];
 
 const localPart = (address: string) => address.split('@')[0].toLowerCase();
 const byName = (list: NamedRef[], ref?: NamedRef) =>
@@ -23,6 +26,9 @@ export function optionsFor(s: SourceSettings, o: TargetOptions): TargetOptions {
     sites: add(o.sites, [c.site], (a, b) => a.id === b.id),
     edgeGroups: add(o.edgeGroups, [c.edgeGroup], (a, b) => a.id === b.id),
     emailAddresses: add(o.emailAddresses, [c.emailDefault, ...(c.emailAll ?? [])], (a, b) => a.routeId === b.routeId),
+    messaging: Object.fromEntries(
+      KINDS.map((k) => [k, add(o.messaging?.[k] ?? [], [c.messaging?.[k]], (a, b) => a.id === b.id)]),
+    ) as Record<MessagingKind, NamedRef[]>,
   };
 }
 
@@ -43,6 +49,14 @@ export function proposeSettings(s: SourceSettings, options: TargetOptions): Targ
       ? c.emailAll.map((a) => pairOf(a)!)
       : s.emailAll?.map((a) => byLocalPart(o.emailAddresses, a)).filter((a): a is NonNullable<typeof a> => !!a),
     phone: s.phone?.target ?? '',
+    // Messaggistica: il valore attuale del target se c'è, altrimenti nessuno (da scegliere)
+    ...(s.messaging
+      ? {
+          messaging: Object.fromEntries(
+            KINDS.filter((k) => s.messaging?.[k]).map((k) => [k, c.messaging?.[k]?.id ?? '']),
+          ) as Partial<Record<MessagingKind, string>>,
+        }
+      : {}),
   };
 }
 
@@ -54,7 +68,8 @@ export function settingsValid(c: TargetSettings, s: SourceSettings, options: Tar
     (!c.siteId || o.sites.some((x) => x.id === c.siteId)) &&
     (!c.edgeGroupId || o.edgeGroups.some((x) => x.id === c.edgeGroupId)) &&
     (!c.emailDefault || route(c.emailDefault)) &&
-    (c.emailAll ?? []).every(route)
+    (c.emailAll ?? []).every(route) &&
+    KINDS.every((k) => !c.messaging?.[k] || o.messaging[k].some((x) => x.id === c.messaging![k]))
   );
 }
 
@@ -164,6 +179,31 @@ export default function TargetSettingsEditor({ settings: s, options, loading, va
           />
         </Tooltip>
       )}
+      {KINDS.filter((k) => s.messaging?.[k]).map((k) => (
+        <Tooltip
+          key={k}
+          title={
+            `${MESSAGING_LABELS[k]} in uscita sul sorgente: ${s.messaging![k]!.name}. ` +
+            (s.targetCurrent
+              ? `Attuale sul target: ${s.targetCurrent.messaging?.[k]?.name ?? 'nessuno'}.`
+              : 'Oggetto non presente sul target.') +
+            ' Vuoto = nessuno.'
+          }
+        >
+          <Select
+            size="small"
+            style={{ width }}
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            loading={loading}
+            placeholder={`${MESSAGING_LABELS[k]} del target (nessuno)`}
+            value={value.messaging?.[k] || undefined}
+            onChange={(id?: string) => set({ messaging: { ...value.messaging, [k]: id ?? '' } })}
+            options={(o?.messaging[k] ?? []).map((x) => ({ value: x.id, label: `${MESSAGING_LABELS[k]}: ${x.name}` }))}
+          />
+        </Tooltip>
+      ))}
       {s.phone && (
         <Tooltip
           title={

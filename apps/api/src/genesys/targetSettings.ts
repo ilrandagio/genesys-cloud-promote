@@ -1,5 +1,5 @@
 import { CATALOG } from './catalog.js';
-import type { DependencyNode, EmailAddress, NamedRef, SourceSettings } from './types.js';
+import type { DependencyNode, EmailAddress, MessagingKind, NamedRef, SourceSettings } from './types.js';
 
 /** Quanto serve del client Genesys */
 interface Reader {
@@ -29,6 +29,40 @@ async function emailAddress(client: Reader, a: any): Promise<EmailAddress | unde
     }
   }
   return { domainId, routeId, address: `${pattern}@${domainId}` };
+}
+
+/** Campi di outboundMessagingAddresses della Queue e API per leggerne nome/numero */
+const MESSAGING_FIELDS: Record<MessagingKind, { field: string; path: (id: string) => string; label: (o: any) => string }> = {
+  sms: {
+    field: 'smsAddress',
+    path: (id) => `/api/v2/routing/sms/phonenumbers/${encodeURIComponent(id)}`,
+    label: (o) => o.phoneNumber ?? o.name,
+  },
+  whatsapp: {
+    field: 'whatsAppRecipient',
+    path: (id) => `/api/v2/routing/message/recipients/${encodeURIComponent(id)}`,
+    label: (o) => o.name,
+  },
+  open: {
+    field: 'openMessagingRecipient',
+    path: (id) => `/api/v2/routing/message/recipients/${encodeURIComponent(id)}`,
+    label: (o) => o.name,
+  },
+};
+
+/** Indirizzi di messaggistica in uscita di una Queue, con nome o numero leggibile */
+async function messagingOf(client: Reader, queue: any): Promise<Partial<Record<MessagingKind, NamedRef>> | undefined> {
+  const out: Partial<Record<MessagingKind, NamedRef>> = {};
+  for (const [kind, f] of Object.entries(MESSAGING_FIELDS) as [MessagingKind, (typeof MESSAGING_FIELDS)[MessagingKind]][]) {
+    const r = queue?.outboundMessagingAddresses?.[f.field];
+    if (!r?.id) continue;
+    const label = await client
+      .get(f.path(r.id))
+      .then((o) => f.label(o))
+      .catch(() => undefined);
+    out[kind] = { id: r.id, name: label ?? r.name ?? r.id };
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** Impostazioni del sorgente di una Campaign o di una Queue (undefined se non ne ha) */
@@ -61,6 +95,7 @@ async function sourceSettings(
     if (src.callingPartyNumber || tgt?.callingPartyNumber) {
       out.phone = { source: src.callingPartyNumber, target: tgt?.callingPartyNumber, required: false };
     }
+    out.messaging = await messagingOf(source, src);
   }
   if (!Object.values(out).some((v) => v !== undefined)) return undefined;
 
@@ -74,6 +109,7 @@ async function sourceSettings(
         ? {
             emailDefault: await emailAddress(target, tgt.outboundEmailAddress),
             emailAll: await emailList(target, tgt.mediaSettings?.email?.allOutboundEmailAddresses),
+            messaging: await messagingOf(target, tgt),
           }
         : {}),
     };
@@ -128,5 +164,16 @@ export async function targetOptions(target: Reader) {
     for (const r of routes as any[]) emailAddresses.push({ domainId: d.id, routeId: r.id, address: `${r.pattern}@${d.id}` });
   }
   emailAddresses.sort((a, b) => a.address.localeCompare(b.address));
-  return { sites: named(sites), edgeGroups: named(edgeGroups), emailAddresses, errors };
+  // Indirizzi di messaggistica in uscita delle Queues
+  const [sms, whatsapp, open] = await Promise.all([
+    safe('Numeri SMS', () => target.listAll('/api/v2/routing/sms/phonenumbers')),
+    safe('Recipients WhatsApp', () => target.listAll('/api/v2/routing/message/recipients?messengerType=whatsapp')),
+    safe('Recipients Open Messaging', () => target.listAll('/api/v2/routing/message/recipients?messengerType=open')),
+  ]);
+  const messaging = {
+    sms: (sms as any[]).map((o) => ({ id: o.id, name: o.phoneNumber ?? o.name ?? o.id })),
+    whatsapp: named(whatsapp as any[]),
+    open: named(open as any[]),
+  };
+  return { sites: named(sites), edgeGroups: named(edgeGroups), emailAddresses, messaging, errors };
 }

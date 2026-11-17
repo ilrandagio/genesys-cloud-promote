@@ -49,7 +49,9 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   - **indirizzo email in uscita** della Queue (dominio + Email Route) ed eventuale elenco completo degli indirizzi,
     proposti per parte prima della `@` uguale a quella del sorgente (i domini di solito cambiano tra org);
   - **numero in uscita** (Queue: Calling Party Number; Campaign: Caller Address): quello del target se l'oggetto esiste
-    già, altrimenti da inserire a mano. Obbligatorio per le Campaigns che lo avevano; per le Queues vuoto = nessun numero.
+    già, altrimenti da inserire a mano. Obbligatorio per le Campaigns che lo avevano; per le Queues vuoto = nessun numero;
+  - **indirizzi di messaggistica in uscita** della Queue (numero SMS, WhatsApp, Open Messaging), se presenti sul sorgente:
+    proposto il valore attuale del target, si sceglie tra quelli del target; vuoto = nessuno.
 
   Senza le scelte obbligatorie la simulazione non parte; il worker verifica che i valori scelti esistano sul target.
 - **Membri delle Queues mai portati né toccati**: non vengono esportati (`members`, Groups, Teams, Skill Groups).

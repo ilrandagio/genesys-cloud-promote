@@ -378,7 +378,31 @@ export async function applyQueueMembership(
       if (ids.length) attrs[attr] = ids;
       else delete attrs[attr];
     }
+    // Indirizzi di messaggistica: quelli scelti nell'analisi ("" = nessuno), verificati sul target;
+    // senza una scelta, quelli attuali del target (mai quelli del sorgente)
+    const KIND: Record<string, 'sms' | 'whatsapp' | 'open'> = {
+      outbound_messaging_sms_address_id: 'sms',
+      outbound_messaging_whatsapp_recipient_id: 'whatsapp',
+      outbound_messaging_open_messaging_recipient_id: 'open',
+    };
     for (const [attr, field] of Object.entries(MESSAGING)) {
+      const chosen = it.targetSettings?.messaging?.[KIND[attr]];
+      if (chosen !== undefined) {
+        if (!chosen) {
+          delete attrs[attr];
+          log(`Queue "${it.name}": ${attr} non impostato sul target`);
+          continue;
+        }
+        const path =
+          KIND[attr] === 'sms'
+            ? `/api/v2/routing/sms/phonenumbers/${encodeURIComponent(chosen)}`
+            : `/api/v2/routing/message/recipients/${encodeURIComponent(chosen)}`;
+        const found = await target.get<any>(path).catch(() => undefined);
+        if (!found) throw new Error(`Queue "${it.name}": ${attr} scelto non trovato sul target (${chosen})`);
+        attrs[attr] = chosen;
+        log(`Queue "${it.name}": ${attr} del target "${found.phoneNumber ?? found.name ?? chosen}"`);
+        continue;
+      }
       const id = current?.outboundMessagingAddresses?.[field]?.id;
       if (id) attrs[attr] = id;
       else if (attrs[attr]) {

@@ -109,9 +109,19 @@ export interface SourceSettings {
   emailDefault?: EmailAddress;
   emailAll?: EmailAddress[];
   phone?: { source?: string; target?: string; required: boolean };
+  /** Queue: numero SMS, WhatsApp e Open Messaging in uscita del sorgente */
+  messaging?: Partial<Record<MessagingKind, NamedRef>>;
   /** Valori attuali dell'oggetto sul target, se esiste già */
-  targetCurrent?: { site?: NamedRef; edgeGroup?: NamedRef; emailDefault?: EmailAddress; emailAll?: EmailAddress[] };
+  targetCurrent?: {
+    site?: NamedRef;
+    edgeGroup?: NamedRef;
+    emailDefault?: EmailAddress;
+    emailAll?: EmailAddress[];
+    messaging?: Partial<Record<MessagingKind, NamedRef>>;
+  };
 }
+
+export type MessagingKind = 'sms' | 'whatsapp' | 'open';
 
 /** Valori del target scelti per una Campaign o una Queue */
 export interface TargetSettings {
@@ -120,12 +130,15 @@ export interface TargetSettings {
   emailDefault?: { domainId: string; routeId: string };
   emailAll?: { domainId: string; routeId: string }[];
   phone?: string;
+  /** Queue: indirizzi di messaggistica del target ("" = nessuno) */
+  messaging?: Partial<Record<MessagingKind, string>>;
 }
 
 export interface TargetOptions {
   sites: NamedRef[];
   edgeGroups: NamedRef[];
   emailAddresses: EmailAddress[];
+  messaging: Record<MessagingKind, NamedRef[]>;
   /** Elenchi del target non leggibili (es. permessi mancanti) */
   errors: string[];
 }

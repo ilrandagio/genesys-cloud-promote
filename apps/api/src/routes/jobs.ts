@@ -25,6 +25,9 @@ const itemSchema = z.object({
       emailDefault: z.object({ domainId: z.string(), routeId: z.string() }).optional(),
       emailAll: z.array(z.object({ domainId: z.string(), routeId: z.string() })).optional(),
       phone: z.string().optional(),
+      messaging: z
+        .object({ sms: z.string().optional(), whatsapp: z.string().optional(), open: z.string().optional() })
+        .optional(),
     })
     .optional(),
 });

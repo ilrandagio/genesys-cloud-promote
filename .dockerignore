@@ -1,0 +1,7 @@
+# Solo i sorgenti entrano nell'immagine: niente dipendenze, build, dati o segreti della macchina locale
+**/node_modules
+**/dist
+data
+.env
+.git
+doc

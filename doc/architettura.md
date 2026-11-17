@@ -134,6 +134,33 @@ L'analisi legge direttamente la Platform API (nessuno stato, nessuna scrittura) 
 
 Gli ID interni (pagine, componenti, task, azioni, variabili) e l'oggetto stesso non sono mai dipendenze.
 
+#### Scripts: riconoscimento e mapping degli ID
+
+Uno Script agente cita gli oggetti dell'org per **ID**, scritti nel suo JSON: nelle azioni (es. "Execute Data Action", trasferimenti e callback verso una Queue), nei valori iniziali delle variabili, nelle impostazioni. Il mapping verso il target funziona in quattro passi.
+
+1. **Indice del sorgente.** All'inizio dell'analisi l'app legge dall'org sorgente l'elenco completo degli oggetti dei tipi elencati sotto e costruisce una tabella *ID → tipo e nome* (una volta per analisi). Gli ID Genesys sono univoci: un ID corrisponde a un solo oggetto, senza ambiguità di tipo.
+2. **Ricerca nello Script.** Nel JSON completo dello Script (export) si prendono tutte le stringhe con la forma di un ID: GUID, oppure `custom_-_<GUID>` per le Data Actions personalizzate e `static…` per quelle predefinite. Ogni ID presente nell'indice diventa una dipendenza dello Script nell'albero; gli ID che non sono nell'indice (pagine, componenti, variabili, azioni dello Script) vengono ignorati.
+3. **Abbinamento con il target.** Ogni dipendenza è cercata sul target per nome; l'azione scelta decide cosa scrivere al posto dell'ID.
+4. **Sostituzione nel file.** In simulazione, nel file JSON dello Script esportato: ID del target per gli oggetti *Usa quella del target*; segnaposto `{{gcp_N}}` riempito da Terraform (`substitutions`) per gli oggetti *Porta*, creati nello stesso rilascio; nessuna sostituzione per lo Script stesso. Il log della simulazione elenca ogni sostituzione: tipo e nome dell'oggetto, ID del sorgente, ID del target (oppure "creato in questo rilascio") e numero di occorrenze.
+
+**Oggetti cercati nell'indice (per ID):**
+
+| Area | Tipi |
+| --- | --- |
+| Architect | Flow, Schedule, Schedule Group, User Prompt, Script, Data Table, Emergency Group |
+| Routing | Queue, ACD Skill, Wrap-up Code, Language, Skill Expression Group |
+| Integrations | Data Action, Integration |
+| Outbound | Campaign, Messaging Campaign, Campaign Sequence, Contact List, Contact List Filter, DNC List, Call Analysis Response Set, Rule Set, Digital Rule Set, Campaign Rule, Attempt Limit, Callable Time Set, File Specification Template |
+| Messaging | Messenger Configuration, Messenger Deployment, Supported Content |
+| Canned Responses | Canned Response Library, Canned Response, Canned Response Asset |
+| People & Permissions | Group, Work Team, Role; Divisions abbinate per nome |
+
+Negli Scripts compaiono in pratica soprattutto **Data Actions** e **Queues**, a volte **Wrap-up Codes**, altri **Scripts**, **Data Tables** e, negli Scripts outbound, **Contact Lists** e **Campaigns**. Per **Data Action, Data Table, Flow, Emergency Group e Schedule Group** il riconoscimento avviene anche per **nome esatto**, se il nome è univoco nell'org; il nome serve solo all'albero, nel file si sostituiscono soltanto gli ID.
+
+**ID nelle variabili.** Un ID scritto per intero come valore di una variabile (es. l'ID di una Data Table passato come input a "Get row details from data table") è riconosciuto e sostituito come gli altri. Per valori che cambiano tra ambienti e non sono oggetti portabili, il modello consigliato è una **Data Table di configurazione** con lo stesso nome in ogni ambiente, letta dallo Script con una Data Action e portata **senza dati**, così ogni ambiente conserva i propri valori; in alternativa, la variabile contiene il nome dell'oggetto e lo Script ricava l'ID a runtime.
+
+**Cosa non viene riconosciuto:** ID di tipi che il client OAuth del sorgente non può leggere (avviso "Tipi di oggetto non leggibili" con il permesso mancante); ID di oggetti eliminati dal sorgente; tipi non gestiti (utenti, Sites, Edge Groups); ID composti a runtime o letti da fonti esterne. Se nella configurazione resta l'ID di un oggetto dell'indice che non compare nell'analisi, la simulazione si ferma e indica oggetto e risorsa.
+
 **Albero.** Un oggetto presente in più rami mostra ovunque tutte le sue dipendenze, letto e confrontato una sola volta; il ramo si ferma solo per una dipendenza circolare. I nodi non leggibili (permessi, oggetto non trovato) restano nell'albero con il motivo, senza interrompere l'analisi.
 
 **Confronto con il target.** Abbinamento per nome (per i flow anche per tipo di flow). Il JSON viene normalizzato (via ID, date, versioni, GUID) e confrontato: *Mancante*, *Presente uguale*, *Presente diverso* con l'elenco dei campi, *Presente* quando il contenuto non è confrontabile (flow, script).

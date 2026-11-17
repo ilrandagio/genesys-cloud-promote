@@ -510,6 +510,110 @@ export function checkRoleUserConditions(cfg: TfJson) {
   }
 }
 
+/** domain → entity → actions disponibili sull'org */
+export type PermissionCatalog = Map<string, Map<string, Set<string>>>;
+
+/** Catalogo dei permessi dell'org (GET /api/v2/authorization/permissions): dipende dalle licenze attive */
+export async function readPermissionCatalog(reader: RowsReader): Promise<PermissionCatalog> {
+  const list = await reader.listAll<{
+    domain: string;
+    permissionMap?: Record<string, { entityType?: string; action: string }[]>;
+  }>('/api/v2/authorization/permissions');
+  const out: PermissionCatalog = new Map();
+  for (const d of list) {
+    const entities = out.get(d.domain) ?? new Map<string, Set<string>>();
+    for (const [entity, actions] of Object.entries(d.permissionMap ?? {})) {
+      const set = entities.get(entity) ?? new Set<string>();
+      for (const a of actions ?? []) set.add(a.action);
+      entities.set(entity, set);
+    }
+    out.set(d.domain, entities);
+  }
+  return out;
+}
+
+/**
+ * Roles portati: ogni permesso (domain:entity:action) del sorgente deve esistere sul target, che può avere
+ * licenze diverse (es. sviluppo CX3, target CX1). Senza l'opzione "Porta senza i permessi non disponibili"
+ * un permesso mancante ferma la simulazione; con l'opzione il permesso viene tolto dal Role (una policy
+ * senza più action viene tolta intera) e ogni rimozione compare nel log e negli avvisi del plan.
+ * I caratteri jolly "*" valgono se il domain (o l'entity) esiste sul target.
+ */
+export async function filterRolePermissions(
+  cfg: TfJson,
+  addresses: Map<PortItem, string>,
+  target: RowsReader,
+  log: Log,
+): Promise<string[]> {
+  const tfType = CATALOG.role.tfType;
+  const roles = [...addresses].filter(([it]) => it.type === 'role' && it.action === 'port');
+  if (!roles.length) return [];
+  let catalog: PermissionCatalog;
+  try {
+    catalog = await readPermissionCatalog(target);
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    const reducing = roles.filter(([it]) => it.dropUnavailablePermissions).map(([it]) => it.name);
+    if (reducing.length) {
+      throw new Error(
+        `Permessi del target non leggibili, impossibile togliere quelli non disponibili dai Roles ` +
+          `${reducing.join(', ')}: ${reason}`,
+      );
+    }
+    const w = `Permessi del target non leggibili: i Roles vengono portati senza verificare le licenze (${reason})`;
+    log(w);
+    return [w];
+  }
+  if (!catalog.size) {
+    const w = 'Il target non ha restituito nessun permesso: i Roles vengono portati senza verificare le licenze';
+    log(w);
+    return [w];
+  }
+  const available = (domain: string, entity: string, action: string) => {
+    const entities = catalog.get(domain);
+    if (!entities) return false;
+    if (entity === '*') return true;
+    const actions = entities.get(entity);
+    if (!actions) return false;
+    return action === '*' || actions.has(action) || actions.has('*');
+  };
+
+  const warnings: string[] = [];
+  const blocking: string[] = [];
+  for (const [it, addr] of roles) {
+    const label = addr.slice(tfType.length + 1);
+    const attrs = cfg.resource?.[tfType]?.[label] as any;
+    if (!attrs) continue;
+    const policies: any[] = Array.isArray(attrs.permission_policies) ? attrs.permission_policies : [];
+    const removed: string[] = [];
+    const kept: any[] = [];
+    for (const p of policies) {
+      const actions: string[] = Array.isArray(p.action_set) ? p.action_set : [];
+      const ok = actions.filter((a) => available(p.domain, p.entity_name, a));
+      for (const a of actions) if (!ok.includes(a)) removed.push(`${p.domain}:${p.entity_name}:${a}`);
+      if (ok.length) kept.push({ ...p, action_set: ok });
+    }
+    if (!removed.length) continue;
+    if (!it.dropUnavailablePermissions) {
+      blocking.push(`${it.name} (${removed.join(', ')})`);
+      continue;
+    }
+    attrs.permission_policies = kept;
+    for (const r of removed) log(`Role "${it.name}": rimosso ${r} (non disponibile sul target)`);
+    warnings.push(
+      `Role "${it.name}": ${removed.length} permessi non disponibili sul target e quindi non portati: ${removed.join(', ')}`,
+    );
+  }
+  if (blocking.length) {
+    throw new Error(
+      `Roles con permessi non disponibili sul target (licenze diverse): ${blocking.join('; ')}. ` +
+        `Attivare "Porta senza i permessi non disponibili" sul Role per portarlo senza quei permessi, ` +
+        `oppure toglierli sul sorgente.`,
+    );
+  }
+  return warnings;
+}
+
 interface RowsReader extends Reader {
   listAll<T = any>(path: string): Promise<T[]>;
 }

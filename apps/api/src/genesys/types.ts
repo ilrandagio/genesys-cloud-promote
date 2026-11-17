@@ -202,4 +202,6 @@ export interface PortItem extends GcObjectRef {
   targetSettings?: TargetSettings;
   /** Solo Data Table portate: porta anche le righe (dati) */
   includeRows?: boolean;
+  /** Solo Roles portati: togli i permessi che il target non ha (licenze diverse) invece di fermarsi */
+  dropUnavailablePermissions?: boolean;
 }

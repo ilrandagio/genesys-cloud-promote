@@ -18,6 +18,7 @@ const itemSchema = z.object({
   targetStatus: z.enum(['missing', 'same', 'different', 'present']),
   targetId: z.string().optional(),
   includeRows: z.boolean().optional(),
+  dropUnavailablePermissions: z.boolean().optional(),
   targetSettings: z
     .object({
       siteId: z.string().optional(),

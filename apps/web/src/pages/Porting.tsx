@@ -128,6 +128,7 @@ export default function PortingPage() {
   const [onlySelected, setOnlySelected] = useSessionState('onlySelected', false);
   /** Data Tables per cui portare anche le righe (opzionale, di default solo la struttura) */
   const [datatableRows, setDatatableRows] = useSessionState<Map<string, boolean>>('datatableRows', new Map(), mapCodec());
+  const [dropPermissions, setDropPermissions] = useSessionState<Map<string, boolean>>('dropPermissions', new Map(), mapCodec());
   const [actionFilter, setActionFilter] = useSessionState<PortAction | 'all'>('actionFilter', 'all');
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
   const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>('plan', undefined);
@@ -260,13 +261,14 @@ export default function PortingPage() {
           targetId: n.target.id,
           ...(n.settings ? { targetSettings: targetSettings.get(keyOf(n)) ?? {} } : {}),
           ...(n.type === 'datatable' && datatableRows.get(keyOf(n)) ? { includeRows: true } : {}),
+          ...(n.type === 'role' && dropPermissions.get(keyOf(n)) ? { dropUnavailablePermissions: true } : {}),
         });
       }
       n.children.forEach(walk);
     };
     trees?.forEach(walk);
     return [...out.values()];
-  }, [trees, actions, targetSettings, datatableRows]);
+  }, [trees, actions, targetSettings, datatableRows, dropPermissions]);
 
   /** Archi dell'albero ("from" usa "to"): il server li usa per l'ordine di creazione (depends_on) */
   const edges = useMemo(() => {
@@ -291,7 +293,7 @@ export default function PortingPage() {
       JSON.stringify([
         sourceId,
         targetId,
-        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '', i.targetSettings ?? null, i.includeRows ?? false]),
+        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '', i.targetSettings ?? null, i.includeRows ?? false, i.dropUnavailablePermissions ?? false]),
       ]),
     [sourceId, targetId, items],
   );
@@ -800,6 +802,22 @@ export default function PortingPage() {
                               onChange={(e) => setDatatableRows(new Map(datatableRows).set(keyOf(n), e.target.checked))}
                             >
                               Porta anche i dati (righe)
+                            </Checkbox>
+                          </Tooltip>
+                        </Space>
+                      );
+                    }
+                    // Role: il target può avere licenze diverse (es. CX1 invece di CX3)
+                    if (n.type === 'role' && porting) {
+                      return (
+                        <Space direction="vertical" size={4}>
+                          {action}
+                          <Tooltip title="Se il target non ha alcuni permessi del Role (licenze diverse), il Role viene portato senza quei permessi invece di fermare la simulazione. I permessi tolti sono elencati nel log e negli avvisi del plan.">
+                            <Checkbox
+                              checked={!!dropPermissions.get(keyOf(n))}
+                              onChange={(e) => setDropPermissions(new Map(dropPermissions).set(keyOf(n), e.target.checked))}
+                            >
+                              Porta senza i permessi non disponibili
                             </Checkbox>
                           </Tooltip>
                         </Space>

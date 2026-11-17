@@ -16,6 +16,8 @@ export interface PlanSummary {
   changes: { address: string; actions: string[] }[];
   /** Risorse del plan già uguali sul target: nessuna modifica (assente nei plan meno recenti) */
   unchanged?: string[];
+  /** Avvisi da leggere prima di approvare (es. permessi tolti dai Roles) */
+  warnings?: string[];
 }
 
 /** Un'organizzazione Genesys Cloud (dev, test, prod...) con il proprio OAuth client. */

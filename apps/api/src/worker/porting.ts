@@ -17,6 +17,7 @@ import {
   applyDataTableRows,
   applyGroupRoles,
   checkRoleUserConditions,
+  filterRolePermissions,
   applyQueueMembership,
   applySafetyRules,
   applyTargetSettings,
@@ -287,6 +288,8 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
 
   // Utenti mai portati: nessun Role può citare un utente del sorgente
   checkRoleUserConditions(cfg);
+  // Roles: permessi che il target non ha (licenze diverse) → errore, oppure tolti se richiesto
+  const planWarnings = await filterRolePermissions(cfg, addresses, targetClient, log.info);
 
   // Groups: Roles assegnati sul sorgente, assegnati anche sul target
   const extraImports: { addr: string; id: string }[] = [];
@@ -422,6 +425,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const plan = await tfOrThrow(['plan', '-no-color', '-input=false', `-out=${PLAN_FILE}`], exportDir, tgtCreds, log.line);
   const planJson = await showPlan(exportDir, PLAN_FILE, tgtCreds);
   const summary = summarize(planJson);
+  if (planWarnings.length) summary.warnings = planWarnings;
   let blockedReason = blockReason(summary);
   if (!blockedReason && !summary.changes.length) blockedReason = 'Il piano non contiene modifiche: niente da eseguire.';
   log.info(

@@ -220,6 +220,21 @@ export default function JobView({
             {summary.replace > 0 && <Tag color="red">{summary.replace} da ricreare</Tag>}
             {!!summary.unchanged?.length && <Tag>{summary.unchanged.length} già uguali sul target</Tag>}
           </Space>
+          {!!summary.warnings?.length && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="Da leggere prima di approvare"
+              description={
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {summary.warnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              }
+            />
+          )}
           <Table
             size="small"
             rowKey="address"

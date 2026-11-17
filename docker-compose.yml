@@ -47,7 +47,7 @@ services:
     restart: unless-stopped
     build: { context: ., dockerfile: apps/web/Dockerfile }
     ports:
-      - "8080:80"
+      - "${WEB_PORT:-8080}:80"
     depends_on:
       - api
 

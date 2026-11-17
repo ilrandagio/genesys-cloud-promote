@@ -234,6 +234,10 @@ docker compose up --build
 
 UI su http://localhost:8080. Qui si usano PostgreSQL e Redis veri e il worker è un container separato.
 Le migrazioni del DB partono da sole all'avvio dell'API.
+I container ripartono da soli dopo un riavvio del server (`restart: unless-stopped`). Su un server:
+`APP_URL` è l'indirizzo con cui gli utenti aprono l'app (con `https://` i cookie di sessione diventano `Secure`) e il
+Redirect URI del client OAuth di login è `APP_URL/api/auth/callback`. Aggiornamento: `git pull && docker compose up -d --build`.
+**Conservare `ENCRYPTION_KEY`**: senza, i client secret salvati non sono più decifrabili.
 
 ## Sviluppo
 

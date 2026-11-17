@@ -56,7 +56,7 @@ const schema = z.object({
   WORK_DIR: z.string().default(path.join(tmpdir(), 'gc-promote')),
   TERRAFORM_BIN: z.string().default('terraform'),
   /// Versione del provider genesyscloud usata per export e apply
-  GENESYS_PROVIDER_VERSION: z.string().default('>= 1.50.0'),
+  GENESYS_PROVIDER_VERSION: z.string().default('1.88.0'),
 });
 
 export const config = schema.parse(process.env);

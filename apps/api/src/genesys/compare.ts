@@ -8,6 +8,12 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VOLATILE = new Set([
   'id',
   'selfUri',
+  // Data Actions: URI dei template e degli schemi nell'org in cui si trovano
+  'requestTemplateUri',
+  'successTemplateUri',
+  'inputSchemaUri',
+  'errorSchemaUri',
+  'successSchemaUri',
   'dateCreated',
   'dateModified',
   'createdBy',

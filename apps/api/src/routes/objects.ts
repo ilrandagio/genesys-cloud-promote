@@ -79,8 +79,8 @@ export async function objectRoutes(app: FastifyInstance) {
       source.get(def.getPath.replace('{id}', encodeURIComponent(q.sourceId))),
       target.get(def.getPath.replace('{id}', encodeURIComponent(q.targetId))),
     ]);
-    const a = normalize(src);
-    const b = normalize(tgt);
+    const a = normalize(src, q.type as ObjectType);
+    const b = normalize(tgt, q.type as ObjectType);
     return { source: a, target: b, diff: diffPaths(a, b, '', [], 500) };
   });
 

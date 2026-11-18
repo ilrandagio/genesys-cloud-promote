@@ -30,14 +30,23 @@ const VOLATILE = new Set([
   'resources',
 ]);
 
+/**
+ * Campi da non confrontare per tipo. Integrations: spesso create o sistemate a mano sul target, le note
+ * differiscono senza conseguenze e reportedState è lo stato a runtime (codice, lastUpdated), non la configurazione.
+ */
+const IGNORED_BY_TYPE: Partial<Record<ObjectType, Set<string>>> = {
+  integration: new Set(['notes', 'reportedState', 'lastUpdated']),
+};
+
 /** Rimuove campi volatili e GUID: i riferimenti vengono confrontati per nome */
-export function normalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalize);
+export function normalize(value: unknown, type?: ObjectType): unknown {
+  const ignored = type ? IGNORED_BY_TYPE[type] : undefined;
+  if (Array.isArray(value)) return value.map((v) => normalize(v, type));
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const k of Object.keys(value).sort()) {
-      if (VOLATILE.has(k)) continue;
-      out[k] = normalize((value as Record<string, unknown>)[k]);
+      if (VOLATILE.has(k) || ignored?.has(k)) continue;
+      out[k] = normalize((value as Record<string, unknown>)[k], type);
     }
     return out;
   }
@@ -136,7 +145,7 @@ export class TargetComparer {
       if (e instanceof NotFoundError) return { status: 'present', id: match.id, division, divisionMissing };
       throw e;
     }
-    const diff = diffPaths(normalize(src), normalize(tgt));
+    const diff = diffPaths(normalize(src, obj.type), normalize(tgt, obj.type));
     if (sourceDivision && division && sourceDivision.name.toLowerCase() !== division.name.toLowerCase()) {
       diff.push('division');
     }

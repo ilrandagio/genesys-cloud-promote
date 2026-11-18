@@ -29,6 +29,9 @@ const itemSchema = z.object({
       messaging: z
         .object({ sms: z.string().optional(), whatsapp: z.string().optional(), open: z.string().optional() })
         .optional(),
+      request: z
+        .object({ url: z.string().optional(), headers: z.record(z.string(), z.string()).optional() })
+        .optional(),
     })
     .optional(),
 });

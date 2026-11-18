@@ -705,3 +705,38 @@ export async function restoreActionUrlTemplates(
   }
   if (restored) log(`Data Actions: request_url_template riletto dal sorgente per ${restored} azioni (non incluso dall'export)`);
 }
+
+/**
+ * Data Actions: URL e header costanti scelti per il target (spesso cambiano tra ambienti: host, chiavi fisse).
+ * Si applica dopo il ripristino dell'URL e dopo la rimappatura degli ID: i valori scelti restano come sono.
+ * Gli header con template ($input, ${credentials...}) non si toccano.
+ */
+export function applyActionRequestSettings(cfg: TfJson, addresses: Map<PortItem, string>, log: Log) {
+  const tfType = CATALOG.dataaction.tfType;
+  const missing: string[] = [];
+  for (const [it, addr] of addresses) {
+    if (it.type !== 'dataaction' || it.action !== 'port' || !it.targetSettings?.request) continue;
+    const request = cfg.resource?.[tfType]?.[addr.slice(tfType.length + 1)]?.config_request?.[0];
+    if (!request) continue;
+    const chosen = it.targetSettings.request;
+    const what = `Data Action "${it.name}"`;
+    if (chosen.url !== undefined) {
+      if (!chosen.url.trim()) missing.push(`URL di ${what}`);
+      else {
+        request.request_url_template = tfLiteral(chosen.url.trim());
+        log(`${what}: URL del target ${chosen.url.trim()}`);
+      }
+    }
+    for (const [name, value] of Object.entries(chosen.headers ?? {})) {
+      const current = request.headers?.[name];
+      if (current !== undefined && typeof current === 'string' && current.includes('$')) continue;
+      if (!value.trim()) {
+        missing.push(`header "${name}" di ${what}`);
+        continue;
+      }
+      request.headers = { ...(request.headers ?? {}), [name]: tfLiteral(value) };
+      log(`${what}: header "${name}" del target impostato`);
+    }
+  }
+  if (missing.length) throw new Error(`Valori del target mancanti: ${missing.join(', ')}`);
+}

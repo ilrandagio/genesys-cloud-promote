@@ -111,6 +111,11 @@ export interface SourceSettings {
   phone?: { source?: string; target?: string; required: boolean };
   /** Queue: numero SMS, WhatsApp e Open Messaging in uscita del sorgente */
   messaging?: Partial<Record<MessagingKind, NamedRef>>;
+  /** Data Action: URL e header con valore costante (non presi dall'Integration né dagli input) */
+  request?: {
+    url: { source: string; target?: string };
+    headers: { name: string; source: string; target?: string }[];
+  };
   /** Valori attuali dell'oggetto sul target, se esiste già */
   targetCurrent?: {
     site?: NamedRef;
@@ -132,6 +137,8 @@ export interface TargetSettings {
   phone?: string;
   /** Queue: indirizzi di messaggistica del target ("" = nessuno) */
   messaging?: Partial<Record<MessagingKind, string>>;
+  /** Data Action: URL e header costanti da usare sul target */
+  request?: { url?: string; headers?: Record<string, string> };
 }
 
 export interface TargetOptions {

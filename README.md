@@ -15,8 +15,9 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
    - scelta di sorgente e target;
    - elenco degli oggetti del sorgente per tipo, raggruppati (vedi *Tipi supportati*), e selezione multipla anche tra tipi diversi;
    - **analisi**: albero delle dipendenze di ogni oggetto, con lo stato sul target per ciascun nodo:
-     *Mancante*, *Presente uguale*, *Presente diverso* (con l'elenco dei campi diversi), *Presente*
-     (esiste, contenuto non confrontato: i flow);
+     *Mancante*, *Presente uguale*, *Presente diverso* (con l'elenco dei campi diversi, es. `config.request.requestUrlTemplate`),
+     *Presente* (esiste, contenuto non confrontato: i flow). L'icona *Differenze* apre il confronto riga per riga tra sorgente
+     e target, sullo stesso contenuto normalizzato usato dall'analisi;
    - per ogni oggetto si sceglie **Porta** (crea o sovrascrive) oppure, in alternativa, **Usa quella del target** se
      l'oggetto esiste già sul target, **Salta** se manca (i riferimenti a quell'oggetto restano scoperti);
      accanto a *Simula* un filtro mostra l'elenco dei soli oggetti con una certa azione;
@@ -43,7 +44,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 ### Regole di sicurezza applicate automaticamente
 
 - **Campaigns e Campaign Sequences arrivano spente** sul target (`campaign_status`/`status` = `off`): si avviano a mano dopo il rilascio.
-- **Impostazioni legate all'org si scelgono sul target** (Campaigns e Queues). Nell'analisi, sulla riga dell'oggetto
+- **Impostazioni legate all'org si scelgono sul target** (Campaigns, Queues e Data Actions). Nell'analisi, sulla riga dell'oggetto
   da portare, si sceglie:
   - **Site ed Edge Group** (Campaign; callback della Queue), proposti per nome uguale a quelli del sorgente;
   - **indirizzo email in uscita** della Queue (dominio + Email Route) ed eventuale elenco completo degli indirizzi,
@@ -51,7 +52,10 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
   - **numero in uscita** (Queue: Calling Party Number; Campaign: Caller Address): quello del target se l'oggetto esiste
     già, altrimenti da inserire a mano. Obbligatorio per le Campaigns che lo avevano; per le Queues vuoto = nessun numero;
   - **indirizzi di messaggistica in uscita** della Queue (numero SMS, WhatsApp, Open Messaging), se presenti sul sorgente:
-    proposto il valore attuale del target, si sceglie tra quelli del target; vuoto = nessuno.
+    proposto il valore attuale del target, si sceglie tra quelli del target; vuoto = nessuno;
+  - **URL e header costanti** delle Data Actions (es. host di test e di produzione, chiavi fisse): proposti i valori della
+    Data Action sul target se esiste, altrimenti quelli del sorgente; modificabili, obbligatori. Gli header con template
+    (`${credentials...}`, `${input...}`) non si toccano; le Function Data Actions non hanno URL.
 
   Senza le scelte obbligatorie la simulazione non parte; il worker verifica che i valori scelti esistano sul target.
 - **Membri delle Queues mai portati né toccati**: non vengono esportati (`members`, Groups, Teams, Skill Groups).

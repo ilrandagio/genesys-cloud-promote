@@ -18,6 +18,7 @@ import {
   applyGroupRoles,
   checkRoleUserConditions,
   filterRolePermissions,
+  applyActionRequestSettings,
   applyQueueMembership,
   applySafetyRules,
   applyTargetSettings,
@@ -285,6 +286,8 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   await applyTargetSettings(cfg, addresses, targetClient, log.info);
   // Queues: membri mai portati, quelli del target mai toccati
   await applyQueueMembership(cfg, addresses, targetClient, log.info);
+  // Data Actions: URL e header costanti scelti sul target
+  applyActionRequestSettings(cfg, addresses, log.info);
 
   // Utenti mai portati: nessun Role può citare un utente del sorgente
   checkRoleUserConditions(cfg);

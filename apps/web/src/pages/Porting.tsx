@@ -1,4 +1,4 @@
-import { ArrowRightOutlined, BranchesOutlined, CodeOutlined, ExclamationCircleFilled, ExperimentOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, BranchesOutlined, CodeOutlined, DiffOutlined, ExclamationCircleFilled, ExperimentOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -35,6 +35,7 @@ import {
   type PortItem,
 } from '../api/client';
 import JobView from '../components/JobView';
+import DiffModal from '../components/DiffModal';
 import TargetSettingsEditor, { missingSettings, proposeSettings, settingsValid } from '../components/TargetSettingsEditor';
 import { flowTypeLabel, TargetStatusTag, typeLabel } from '../components/StatusTag';
 import { mapCodec, useSessionState } from '../hooks/useSessionState';
@@ -129,6 +130,7 @@ export default function PortingPage() {
   const [onlySelected, setOnlySelected] = useSessionState('onlySelected', false);
   /** Data Tables per cui portare anche le righe (opzionale, di default solo la struttura) */
   const [datatableRows, setDatatableRows] = useSessionState<Map<string, boolean>>('datatableRows', new Map(), mapCodec());
+  const [diffNode, setDiffNode] = useState<DependencyNode>();
   const [dropPermissions, setDropPermissions] = useSessionState<Map<string, boolean>>('dropPermissions', new Map(), mapCodec());
   const [actionFilter, setActionFilter] = useSessionState<PortAction | 'all'>('actionFilter', 'all');
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
@@ -200,7 +202,7 @@ export default function PortingPage() {
     }
   };
 
-  /** Campaigns e Queues dell'analisi con impostazioni legate all'org (Site, Edge Group, email, numero) */
+  /** Campaigns, Queues e Data Actions dell'analisi con impostazioni legate all'org (Site, Edge Group, email, numero, URL) */
   const settingsNodes = useMemo(() => {
     const out = new Map<string, DependencyNode>();
     const walk = (n: DependencyNode) => {
@@ -238,6 +240,14 @@ export default function PortingPage() {
               emailAll: current.emailAll?.length ? current.emailAll : proposed.emailAll,
               phone: current.phone ?? proposed.phone,
               messaging: { ...proposed.messaging, ...current.messaging },
+              ...(proposed.request
+                ? {
+                    request: {
+                      url: current.request?.url ?? proposed.request.url,
+                      headers: { ...proposed.request.headers, ...current.request?.headers },
+                    },
+                  }
+                : {}),
             }
           : proposed;
       if (JSON.stringify(merged) === JSON.stringify(current)) continue;
@@ -719,6 +729,13 @@ export default function PortingPage() {
                           </a>
                         </Tooltip>
                       )}
+                      {n.supported && n.target?.id && targetId && (n.target.status === 'same' || n.target.status === 'different') && (
+                        <Tooltip title="Differenze tra sorgente e target">
+                          <a onClick={() => setDiffNode(n as DependencyNode)}>
+                            <DiffOutlined />
+                          </a>
+                        </Tooltip>
+                      )}
                     </Space>
                   ),
                 },
@@ -866,6 +883,18 @@ export default function PortingPage() {
           </Space>
         )}
       </Drawer>
+      {diffNode && sourceId && targetId && diffNode.target?.id && (
+        <DiffModal
+          open
+          onClose={() => setDiffNode(undefined)}
+          name={diffNode.name}
+          type={diffNode.type}
+          sourceEnvId={sourceId}
+          targetEnvId={targetId}
+          sourceId={diffNode.id}
+          targetId={diffNode.target.id}
+        />
+      )}
     </Space>
   );
 }

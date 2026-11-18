@@ -57,6 +57,15 @@ export function proposeSettings(s: SourceSettings, options: TargetOptions): Targ
           ) as Partial<Record<MessagingKind, string>>,
         }
       : {}),
+    // Data Action: URL e header costanti del target se l'azione esiste già, altrimenti quelli del sorgente
+    ...(s.request
+      ? {
+          request: {
+            url: s.request.url.target ?? s.request.url.source,
+            headers: Object.fromEntries(s.request.headers.map((h) => [h.name, h.target ?? h.source])),
+          },
+        }
+      : {}),
   };
 }
 
@@ -81,6 +90,8 @@ export function missingSettings(s: SourceSettings, c: TargetSettings = {}): stri
   if (s.emailDefault && !c.emailDefault) out.push('indirizzo email');
   if (s.emailAll?.length && !c.emailAll?.length && !c.emailDefault) out.push('indirizzi email');
   if (s.phone?.required && !c.phone?.trim()) out.push('numero in uscita');
+  if (s.request && !c.request?.url?.trim()) out.push('URL');
+  for (const h of s.request?.headers ?? []) if (!c.request?.headers?.[h.name]?.trim()) out.push(`header ${h.name}`);
   return out;
 }
 
@@ -92,7 +103,7 @@ interface Props {
   onChange: (v: TargetSettings) => void;
 }
 
-/** Scelta dei valori del target per Site, Edge Group, indirizzi email e numero in uscita */
+/** Scelta dei valori del target: Site, Edge Group, indirizzi email, numero in uscita, URL e header delle Data Actions */
 export default function TargetSettingsEditor({ settings: s, options, loading, value, onChange }: Props) {
   const o = options ? optionsFor(s, options) : undefined;
   const set = (patch: TargetSettings) => onChange({ ...value, ...patch });
@@ -201,6 +212,49 @@ export default function TargetSettingsEditor({ settings: s, options, loading, va
             value={value.messaging?.[k] || undefined}
             onChange={(id?: string) => set({ messaging: { ...value.messaging, [k]: id ?? '' } })}
             options={(o?.messaging[k] ?? []).map((x) => ({ value: x.id, label: `${MESSAGING_LABELS[k]}: ${x.name}` }))}
+          />
+        </Tooltip>
+      ))}
+      {s.request && (
+        <Tooltip
+          title={
+            <>
+              Sul sorgente: {s.request.url.source}
+              <br />
+              {s.request.url.target !== undefined
+                ? `Sul target: ${s.request.url.target}`
+                : 'Data Action non presente sul target: proposto l\'URL del sorgente.'}
+              <br />I template come {'${input.x}'} restano validi.
+            </>
+          }
+        >
+          <Input
+            size="small"
+            style={{ width: 420 }}
+            addonBefore="URL"
+            status={value.request?.url?.trim() ? undefined : 'error'}
+            value={value.request?.url}
+            onChange={(e) => set({ request: { ...value.request, url: e.target.value } })}
+          />
+        </Tooltip>
+      )}
+      {s.request?.headers.map((h) => (
+        <Tooltip
+          key={h.name}
+          title={
+            `Header costante sul sorgente: ${h.source}. ` +
+            (h.target !== undefined ? `Sul target: ${h.target}.` : 'Non presente sul target: proposto il valore del sorgente.')
+          }
+        >
+          <Input
+            size="small"
+            style={{ width: 420 }}
+            addonBefore={h.name}
+            status={value.request?.headers?.[h.name]?.trim() ? undefined : 'error'}
+            value={value.request?.headers?.[h.name]}
+            onChange={(e) =>
+              set({ request: { ...value.request, headers: { ...value.request?.headers, [h.name]: e.target.value } } })
+            }
           />
         </Tooltip>
       ))}

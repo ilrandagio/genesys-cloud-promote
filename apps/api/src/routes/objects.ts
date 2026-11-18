@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { CATALOG, listObjects } from '../genesys/catalog.js';
 import { GenesysClient } from '../genesys/client.js';
-import { TargetComparer } from '../genesys/compare.js';
+import { TargetComparer, diffPaths, normalize } from '../genesys/compare.js';
 import { buildDependencyTree, lazyIdIndex } from '../genesys/dependencies.js';
 import { annotateSettings, targetOptions } from '../genesys/targetSettings.js';
 import { OBJECT_TYPES, toDivision, type ObjectType } from '../genesys/types.js';
@@ -57,6 +57,31 @@ export async function objectRoutes(app: FastifyInstance) {
           ? await client.exportScript(id)
           : await client.get(CATALOG[type as ObjectType].getPath.replace('{id}', encodeURIComponent(id)));
     return reply.header('Content-Type', 'application/json; charset=utf-8').send(JSON.stringify(content, null, 2));
+  });
+
+  /**
+   * Confronto sorgente/target di un oggetto: lo stesso contenuto usato dall'analisi per dire "uguale" o "diverso",
+   * già normalizzato (senza campi volatili come id, date, versione; GUID sostituiti da "<id>", chiavi ordinate)
+   */
+  app.get('/api/compare', async (req) => {
+    const q = z
+      .object({
+        sourceEnvId: z.string(),
+        targetEnvId: z.string(),
+        type: z.enum(OBJECT_TYPES),
+        sourceId: z.string(),
+        targetId: z.string(),
+      })
+      .parse(req.query);
+    const def = CATALOG[q.type as ObjectType];
+    const [source, target] = await Promise.all([clientFor(q.sourceEnvId), clientFor(q.targetEnvId)]);
+    const [src, tgt] = await Promise.all([
+      source.get(def.getPath.replace('{id}', encodeURIComponent(q.sourceId))),
+      target.get(def.getPath.replace('{id}', encodeURIComponent(q.targetId))),
+    ]);
+    const a = normalize(src);
+    const b = normalize(tgt);
+    return { source: a, target: b, diff: diffPaths(a, b, '', [], 500) };
   });
 
   /** Valori del target tra cui scegliere le impostazioni di Campaigns e Queues (Sites, Edge Groups, indirizzi email) */

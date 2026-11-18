@@ -25,7 +25,7 @@ const VOLATILE = new Set([
 ]);
 
 /** Rimuove campi volatili e GUID: i riferimenti vengono confrontati per nome */
-function normalize(value: unknown): unknown {
+export function normalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalize);
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
@@ -39,9 +39,22 @@ function normalize(value: unknown): unknown {
   return value;
 }
 
-function diffKeys(a: any, b: any): string[] {
-  const keys = new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})]);
-  return [...keys].filter((k) => JSON.stringify(a?.[k]) !== JSON.stringify(b?.[k]));
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Percorsi dei campi diversi (es. config.request.requestUrlTemplate, contract.input.inputSchema.required):
+ * si scende negli oggetti, un array diverso è un solo campo. Al massimo `limit` percorsi.
+ */
+export function diffPaths(a: unknown, b: unknown, prefix = '', out: string[] = [], limit = 30): string[] {
+  if (out.length >= limit) return out;
+  if (isObj(a) && isObj(b)) {
+    for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()) {
+      diffPaths(a[k], b[k], prefix ? `${prefix}.${k}` : k, out, limit);
+    }
+    return out;
+  }
+  if (JSON.stringify(a) !== JSON.stringify(b)) out.push(prefix || '(intero oggetto)');
+  return out;
 }
 
 /**
@@ -117,7 +130,7 @@ export class TargetComparer {
       if (e instanceof NotFoundError) return { status: 'present', id: match.id, division, divisionMissing };
       throw e;
     }
-    const diff = diffKeys(normalize(src), normalize(tgt));
+    const diff = diffPaths(normalize(src), normalize(tgt));
     if (sourceDivision && division && sourceDivision.name.toLowerCase() !== division.name.toLowerCase()) {
       diff.push('division');
     }

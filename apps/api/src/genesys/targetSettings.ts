@@ -1,5 +1,5 @@
 import { CATALOG } from './catalog.js';
-import type { DependencyNode, EmailAddress, MessagingKind, NamedRef, SourceSettings } from './types.js';
+import { isStaticDataAction, type DependencyNode, EmailAddress, MessagingKind, NamedRef, SourceSettings } from './types.js';
 
 /** Quanto serve del client Genesys */
 interface Reader {
@@ -8,7 +8,7 @@ interface Reader {
 }
 
 /** Tipi con impostazioni da scegliere sul target */
-export const SETTINGS_TYPES = new Set(['campaign', 'queue']);
+export const SETTINGS_TYPES = new Set(['campaign', 'queue', 'dataaction']);
 
 const ref = (r: any): NamedRef | undefined => (r?.id ? { id: r.id, name: r.name ?? r.id } : undefined);
 
@@ -75,6 +75,7 @@ async function sourceSettings(
   const src = await source.get(path(n.id));
   const tgt = n.target?.id ? await target.get(path(n.target.id)).catch(() => undefined) : undefined;
   const out: SourceSettings = {};
+  if (n.type === 'dataaction') return actionSettings(source, src, tgt);
   const emailList = async (client: Reader, list?: any[]) =>
     list?.length
       ? (await Promise.all(list.map((a) => emailAddress(client, a)))).filter((a): a is EmailAddress => !!a)
@@ -117,11 +118,42 @@ async function sourceSettings(
   return out;
 }
 
-/** Aggiunge ai nodi Campaign e Queue le impostazioni da scegliere sul target */
+/** Header con un valore costante: niente template ($input, ${credentials...}) */
+export const isConstantHeader = (value: unknown): value is string => typeof value === 'string' && !value.includes('$');
+
+/**
+ * Data Action: URL e header costanti, che spesso cambiano tra ambienti (es. host di test e di produzione).
+ * Le Function Data Actions non hanno URL (lo imposta la piattaforma).
+ */
+async function actionSettings(source: Reader, src: any, tgt: any): Promise<SourceSettings | undefined> {
+  const request = src?.config?.request;
+  if (!request?.requestUrlTemplate) return undefined;
+  if (src.integrationId) {
+    const integration = await source
+      .get(`/api/v2/integrations/${encodeURIComponent(src.integrationId)}`)
+      .catch(() => undefined);
+    if (integration?.integrationType?.id === 'function-data-actions') return undefined;
+  }
+  const targetHeaders = tgt?.config?.request?.headers ?? {};
+  return {
+    request: {
+      url: { source: request.requestUrlTemplate, target: tgt?.config?.request?.requestUrlTemplate },
+      headers: Object.entries(request.headers ?? {})
+        .filter(([, v]) => isConstantHeader(v))
+        .map(([name, v]) => ({
+          name,
+          source: v as string,
+          target: isConstantHeader(targetHeaders[name]) ? targetHeaders[name] : undefined,
+        })),
+    },
+  };
+}
+
+/** Aggiunge ai nodi Campaign, Queue e Data Action le impostazioni da scegliere sul target */
 export async function annotateSettings(source: Reader, target: Reader, trees: DependencyNode[]) {
   const byKey = new Map<string, DependencyNode[]>();
   const collect = (n: DependencyNode) => {
-    if (SETTINGS_TYPES.has(n.type) && n.supported && n.target) {
+    if (SETTINGS_TYPES.has(n.type) && n.supported && n.target && !isStaticDataAction(n)) {
       const key = `${n.type}:${n.id}`;
       byKey.set(key, [...(byKey.get(key) ?? []), n]);
     }

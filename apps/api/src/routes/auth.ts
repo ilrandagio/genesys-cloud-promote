@@ -22,6 +22,13 @@ const loginBase = `https://login.${config.GENESYS_LOGIN_REGION}`;
 const apiBase = `https://api.${config.GENESYS_LOGIN_REGION}`;
 const redirectUri = `${config.APP_URL.replace(/\/$/, '')}/api/auth/callback`;
 const secure = config.APP_URL.startsWith('https://');
+/**
+ * Percorso con cui il browser vede l'app (es. "/promote" se pubblicata dietro un altro server, "" alla radice):
+ * i cookie devono usarlo, altrimenti il browser non li rimanda.
+ */
+const basePath = new URL(config.APP_URL).pathname.replace(/\/+$/, '');
+const STATE_PATH = `${basePath}/api/auth`;
+const SESSION_PATH = `${basePath}/`;
 const allowedEmails = config.APP_ALLOWED_EMAILS
   ? new Set(config.APP_ALLOWED_EMAILS.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean))
   : undefined;
@@ -87,7 +94,7 @@ export async function authRoutes(app: FastifyInstance) {
         httpOnly: true,
         sameSite: 'lax',
         secure,
-        path: '/api/auth',
+        path: STATE_PATH,
         maxAge: 600,
         signed: true,
       })
@@ -97,7 +104,7 @@ export async function authRoutes(app: FastifyInstance) {
   /** Ritorno da Genesys: scambio del code, lettura dell'utente, emissione della sessione */
   app.get('/api/auth/callback', async (req, reply) => {
     const q = req.query as Record<string, string | undefined>;
-    reply.clearCookie(STATE_COOKIE, { path: '/api/auth' });
+    reply.clearCookie(STATE_COOKIE, { path: STATE_PATH });
 
     if (q.error) return fail(reply, `Genesys Cloud: ${q.error_description ?? q.error}`);
 
@@ -161,12 +168,12 @@ export async function authRoutes(app: FastifyInstance) {
     req.log.info({ user: email, canApply: user.canApply, canApprove: user.canApprove }, 'Login');
     const token = app.jwt.sign(user, { expiresIn: `${SESSION_HOURS}h` });
     return reply
-      .setCookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge: SESSION_HOURS * 3600 })
+      .setCookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, path: SESSION_PATH, maxAge: SESSION_HOURS * 3600 })
       .redirect(`${config.APP_URL}/`);
   });
 
   app.post('/api/auth/logout', async (_req, reply) => {
-    reply.clearCookie(COOKIE, { path: '/' }).send({ ok: true });
+    reply.clearCookie(COOKIE, { path: SESSION_PATH }).send({ ok: true });
   });
 
   app.get('/api/auth/me', { preHandler: requireAuth }, async (req) => {

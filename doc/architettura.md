@@ -287,6 +287,163 @@ In entrambi i casi un solo job alla volta: niente esecuzioni concorrenti sullo s
 
 **Database integrato.** PGlite non sopporta chiusure brusche del processo: l'app chiude in modo ordinato su Ctrl+C e stop, ma per plan, approvazioni e storico che devono durare va usato PostgreSQL (installabile anche su Windows senza Docker).
 
+#### Installazione con Docker: procedura
+
+Procedura per un server Linux con Docker. Gli esempi pubblicano l'app su `https://<server>/promote` dietro un server
+Node/Koa già in ascolto sulla 443 (il caso del server di produzione). Le differenze per l'app esposta direttamente sono
+indicate al passo 3.
+
+**1. Prerequisiti sul server**
+
+```bash
+docker --version              # Docker Engine
+docker compose version        # Compose v2
+sudo docker run --rm hello-world
+```
+
+I comandi `docker` richiedono `sudo`, oppure un utente nel gruppo `docker`, che equivale a root. Per questo il
+gruppo va dato solo agli amministratori.
+
+**2. Pacchetto dei sorgenti** (dal PC, nella cartella del repository aggiornato)
+
+```bash
+git pull
+git archive --format=tar.gz -o gcp.tar.gz HEAD \
+  package.json package-lock.json docker-compose.yml .dockerignore .env.example apps
+scp gcp.tar.gz ubuntu@<server>:~
+```
+
+`git archive` include solo i file versionati: niente `node_modules`, `.env` o `data`. La compilazione avviene dentro
+Docker, quindi sul server non servono Node né Terraform. In alternativa al pacchetto si può fare `git clone` del
+repository sul server.
+
+Sul server:
+
+```bash
+mkdir -p ~/genesys-cloud-promote
+tar -xzf ~/gcp.tar.gz -C ~/genesys-cloud-promote
+cd ~/genesys-cloud-promote
+```
+
+La cartella deve chiamarsi sempre `genesys-cloud-promote`, perché Docker dà ai volumi del database il nome della
+cartella (`genesys-cloud-promote_pgdata`).
+
+**3. File `.env`** (solo alla prima installazione)
+
+```bash
+cp .env.example .env && chmod 600 .env
+openssl rand -hex 32        # → JWT_SECRET
+openssl rand -base64 32     # → ENCRYPTION_KEY (conservarla anche fuori dal server)
+nano .env
+```
+
+| Variabile | Valore dietro il Koa | Note |
+| --- | --- | --- |
+| `JWT_SECRET` | 64 caratteri esadecimali | Cambiandolo si invalidano tutte le sessioni |
+| `ENCRYPTION_KEY` | 32 byte in base64 | Se si perde, i client secret salvati non sono più decifrabili |
+| `APP_URL` | `https://<server>/promote` | L'indirizzo esatto usato nel browser, senza barra finale |
+| `WEB_PORT` | `8090` | Porta locale a cui il Koa inoltra; deve essere libera |
+| `WEB_BIND` | `127.0.0.1` | La porta non è raggiungibile dall'esterno |
+| `BASE_PATH` | `/promote` | Stesso prefisso del proxy; cambiandolo serve `--build` |
+| `GENESYS_LOGIN_REGION` | es. `mypurecloud.de` | Regione dell'org del client di login |
+| `GENESYS_LOGIN_CLIENT_ID` / `_SECRET` | client *Code Authorization* | Vedi il passo 4 |
+| `APP_APPLY_EMAILS` / `APP_APPROVER_EMAILS` | email separate da virgola | Chi esegue e chi approva (in alternativa i Roles Genesys) |
+| `DATABASE_URL`, `REDIS_URL` | vuoti | Li imposta `docker-compose.yml` |
+| `GENESYS_PROVIDER_VERSION` | `>= 1.88.0` | |
+
+Per l'app esposta direttamente, senza il Koa: `BASE_PATH` vuoto, `WEB_BIND` vuoto, `WEB_PORT` uguale alla porta
+aperta sul firewall e `APP_URL=https://<server>:<porta>`.
+
+Regole del file: una variabile per riga, nessuno spazio attorno a `=` e nessun `#` davanti. Se il file è stato
+modificato su Windows, togliere i fine riga Windows con `sed -i 's/\r$//' .env`.
+
+**4. Client OAuth di login in Genesys Cloud** (Admin → Integrations → OAuth, nell'org della regione indicata)
+
+- Grant Type: **Code Authorization** (un client *Client Credentials* non funziona per il login).
+- Authorized redirect URI: `APP_URL` + `/api/auth/callback`, identico carattere per carattere. Esempio:
+  `https://<server>/promote/api/auth/callback`.
+
+**5. Proxy nel server Koa** (`npm install koa-proxies`, da registrare prima del body parser e delle altre route)
+
+```js
+const proxy = require('koa-proxies');
+app.use(async (ctx, next) => {
+  if (ctx.path === '/promote') return ctx.redirect('/promote/');
+  await next();
+});
+app.use(proxy(/^\/promote\//, {
+  target: 'http://127.0.0.1:8090',   // 127.0.0.1, non "localhost" (Node può provare l'IPv6 ::1)
+  changeOrigin: false,
+  xfwd: true,
+  rewrite: (p) => p.replace(/^\/promote/, ''),
+  proxyTimeout: 300000,              // l'analisi di org grandi può durare minuti
+}));
+```
+
+Il servizio Koa deve girare con un utente senza privilegi, non root e fuori dal gruppo `docker`, con
+`AmbientCapabilities=CAP_NET_BIND_SERVICE` nell'unità systemd per poter aprire le porte 80 e 443.
+
+**6. Compilazione e avvio**
+
+```bash
+sudo docker compose build          # controllare che termini senza errori
+sudo docker compose up -d
+sudo docker compose ps --format '{{.Service}}\t{{.Status}}\t{{.Ports}}'
+```
+
+Esito atteso: tutti i servizi `Up` (`postgres` anche `healthy`), con `web` su `127.0.0.1:8090->80/tcp`. I container
+ripartono da soli dopo un riavvio del server.
+
+**7. Verifiche**
+
+```bash
+curl -s http://127.0.0.1:8090/ | grep -o 'src="[^"]*"'                          # src="/promote/assets/..."
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/api/auth/me      # 401
+curl -sk https://localhost/promote/ | grep -o 'src="[^"]*"'                      # uguale, attraverso il Koa
+curl -skI https://localhost/promote/api/auth/login | grep -io 'path=[^;]*'      # Path=/promote/api/auth
+```
+
+Poi dal browser: `https://<server>/promote/` → *Accedi con Genesys Cloud*.
+
+**8. Aggiornamenti**
+
+Si rifà il pacchetto (passo 2) e lo si estrae sopra la cartella esistente: il `.env` resta, perché il pacchetto non
+lo contiene. Poi:
+
+```bash
+cd ~/genesys-cloud-promote
+tar -xzf ~/gcp.tar.gz -C ~/genesys-cloud-promote
+sudo docker compose build && sudo docker compose up -d
+```
+
+Se cambia solo il codice dell'API, basta `sudo docker compose build api worker && sudo docker compose up -d api worker`.
+Se la compilazione sembra non aver preso le modifiche, ricompilare senza cache: `build --no-cache`.
+
+**9. Backup e operazioni**
+
+```bash
+sudo docker compose exec -T postgres pg_dump -U gcp gcp > backup-$(date +%F).sql                # backup
+sudo docker compose logs --tail=50 api                                                           # log dell'API
+sudo docker compose logs --tail=50 worker                                                        # log dei job
+```
+
+`docker compose down` ferma l'app conservando i dati. `docker compose down -v` cancella anche il database: non
+usarlo. Oltre al backup del database va conservato il `.env`, in particolare `ENCRYPTION_KEY`.
+
+**10. Problemi frequenti**
+
+| Sintomo | Causa | Soluzione |
+| --- | --- | --- |
+| `address already in use` all'avvio di `web` | La porta `WEB_PORT` è usata da un altro programma | Scegliere una porta libera (`sudo ss -ltnp \| grep :<porta>`) |
+| `api` e `worker` in `Restarting`, nel log `ZodError` | Variabile del `.env` mancante o non valida (indicata in `path`) | Correggere il `.env`, poi `sudo docker compose up -d` |
+| *Service Unavailable* dal Koa | Il Koa non raggiunge `127.0.0.1:<WEB_PORT>` | Controllare `WEB_BIND=127.0.0.1`, `WEB_PORT` e la destinazione del proxy |
+| *502 Bad Gateway* su `/api/...` | `api` non è in esecuzione | `sudo docker compose logs api` |
+| Pagina bianca | Interfaccia compilata senza prefisso (`src="/assets/..."`) | `BASE_PATH` nel `.env`, poi `build` |
+| *The OAuth client ID or redirect URI is invalid* | Client di altra regione, non *Code Authorization*, o redirect URI diverso | Vedi il passo 4; l'URI inviato si legge con `curl -skI https://localhost/promote/api/auth/login` |
+| *Sessione di login scaduta* | Il cookie di login non torna: `APP_URL` senza il prefisso, oppure immagine non aggiornata | `APP_URL` con `/promote`; verificare `Path=/promote/api/auth` (passo 7) |
+| Dopo il login si torna alla pagina di login | Indirizzo nel browser diverso da `APP_URL`, oppure HTTP con `APP_URL` in HTTPS | Usare esattamente l'indirizzo di `APP_URL` |
+
+
 ### Garanzie di affidabilità
 
 Ogni rischio di rilascio non voluto, non autorizzato o incoerente ha una contromisura nel codice, verificata con org e Terraform simulati.

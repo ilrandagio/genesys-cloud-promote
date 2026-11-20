@@ -21,7 +21,7 @@ export interface PlanArtifact {
 /** Cartelle escluse: i provider vengono riscaricati con le stesse versioni grazie a .terraform.lock.hcl */
 const EXCLUDED_DIRS = new Set(['.terraform']);
 
-async function collect(dir: string, base = dir, out: Record<string, string> = {}) {
+export async function collect(dir: string, base = dir, out: Record<string, string> = {}) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -31,6 +31,26 @@ async function collect(dir: string, base = dir, out: Record<string, string> = {}
     }
   }
   return out;
+}
+
+/**
+ * File della configurazione di un plan da far scaricare: export rimappato, YAML dei flow, JSON degli script,
+ * audio dei prompt, lock dei provider. Esclusi state (valori attuali del target), tfvars e file di piano binari.
+ */
+const NOT_DOWNLOADABLE = [/\.tfstate(\.backup)?$/i, /\.tfplan$/i, /\.tfvars(\.json)?$/i, /(^|\/)terraform\.tfstate\.d\//i];
+
+export async function packPlanFiles(dir: string, extra: Record<string, string | Buffer>): Promise<string> {
+  const files: Record<string, string> = {};
+  for (const [rel, b64] of Object.entries(await collect(dir))) {
+    if (!NOT_DOWNLOADABLE.some((re) => re.test(rel))) files[rel] = b64;
+  }
+  for (const [rel, content] of Object.entries(extra)) files[rel] = Buffer.from(content).toString('base64');
+  return encrypt(JSON.stringify({ version: 1, files }));
+}
+
+export function unpackPlanFiles(encrypted: string): Record<string, Buffer> {
+  const { files } = JSON.parse(decrypt(encrypted)) as { files: Record<string, string> };
+  return Object.fromEntries(Object.entries(files).map(([rel, b64]) => [rel, Buffer.from(b64, 'base64')]));
 }
 
 export async function packArtifact(dir: string, meta: Omit<PlanArtifact, 'files' | 'version'>): Promise<string> {

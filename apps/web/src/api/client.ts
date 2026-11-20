@@ -208,6 +208,12 @@ export interface JobSummary {
   appliedJobId?: string | null;
   planJobId?: string | null;
   appliedResources?: string[] | null;
+  /** Configurazione del plan scaricabile */
+  planFilesAvailable?: boolean;
+  /** Plan di ripristino: esecuzione che annulla */
+  rollbackOfJobId?: string | null;
+  /** Esecuzione con stato precedente salvato: si può ripristinare */
+  rollbackAvailable?: boolean;
   plan?: PlanState;
 }
 

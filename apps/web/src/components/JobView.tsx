@@ -1,9 +1,9 @@
-import { CheckOutlined, DeleteOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { CheckOutlined, DeleteOutlined, DownloadOutlined, FileTextOutlined, PlayCircleOutlined, RollbackOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Card, Descriptions, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { api, type JobDetail, type PortItem } from '../api/client';
+import { Link, useNavigate } from 'react-router-dom';
+import { api, appUrl, type JobDetail, type PortItem } from '../api/client';
 import { JobStatusTag, PlanStateTag, TargetStatusTag, typeLabel } from './StatusTag';
 
 const ACTION_LABEL = { port: 'Porta', reuse: 'Usa target', skip: 'Salta' } as const;
@@ -38,6 +38,7 @@ export default function JobView({
 }) {
   const { modal, message } = App.useApp();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const job = useQuery({
     queryKey: ['job', id],
@@ -80,7 +81,14 @@ export default function JobView({
         <Space direction="vertical">
           <span>
             Verrà applicato esattamente il piano simulato il {fmt(j.createdAt)}:{' '}
-            <b>{summary?.add ?? 0}</b> da creare, <b>{summary?.change ?? 0}</b> da aggiornare.
+            <b>{summary?.add ?? 0}</b> da creare, <b>{summary?.change ?? 0}</b> da aggiornare
+            {summary?.destroy ? (
+              <>
+                , <b style={{ color: '#cf1322' }}>{summary.destroy} da cancellare</b> (oggetti creati dall'esecuzione che si
+                annulla)
+              </>
+            ) : null}
+            .
           </span>
           <span>
             Prima di scrivere viene verificato che {j.targetName} non sia cambiato dopo la simulazione: in quel caso non viene
@@ -100,6 +108,47 @@ export default function JobView({
       okText: 'Scarta',
       onOk: () => call(`/api/jobs/${j.id}/discard`, () => message.success('Plan scartato')),
     });
+
+  const rollback = () =>
+    modal.confirm({
+      title: `Ripristinare lo stato di ${j.targetName} precedente a questa esecuzione?`,
+      width: 560,
+      content: (
+        <Space direction="vertical">
+          <span>
+            Viene creata una <b>simulazione di ripristino</b>: gli oggetti aggiornati tornano com'erano prima dell'esecuzione
+            e quelli creati vengono cancellati. Non viene scritto nulla finché il plan non viene approvato (se richiesto) ed
+            eseguito, come per ogni rilascio.
+          </span>
+          <span>Eventuali modifiche fatte agli stessi oggetti dopo questa esecuzione andranno perse: controlla il plan.</span>
+        </Space>
+      ),
+      okText: 'Crea la simulazione di ripristino',
+      onOk: () => call(`/api/jobs/${j.id}/rollback`, (res) => navigate(`/jobs/${res.id}`)),
+    });
+
+  const finished = !['QUEUED', 'RUNNING'].includes(j.status);
+  const downloads = (
+    <Space wrap>
+      {j.mode === 'APPLY' && finished && (
+        <Button icon={<FileTextOutlined />} href={appUrl(`/api/jobs/${j.id}/release-notes`)}>
+          Note di rilascio
+        </Button>
+      )}
+      {(j.mode === 'APPLY' || j.planFilesAvailable) && finished && (
+        <Tooltip title="Configurazione Terraform che viene applicata, con i file dei flow e degli script, l'output del plan e il riepilogo (senza state)">
+          <Button icon={<DownloadOutlined />} href={appUrl(`/api/jobs/${j.id}/plan-files`)}>
+            File del plan
+          </Button>
+        </Tooltip>
+      )}
+      {j.mode === 'APPLY' && j.rollbackAvailable && (
+        <Button icon={<RollbackOutlined />} loading={busy} onClick={rollback}>
+          Ripristina lo stato precedente
+        </Button>
+      )}
+    </Space>
+  );
 
   const pre = (text?: string | null) => (
     <pre
@@ -145,11 +194,16 @@ export default function JobView({
         size={compact ? 'small' : 'default'}
         title={
           <Space>
-            {j.mode === 'PLAN' ? 'Simulazione (plan)' : 'Esecuzione'}
+            {j.mode === 'PLAN' ? (j.rollbackOfJobId ? 'Simulazione di ripristino' : 'Simulazione (plan)') : 'Esecuzione'}
             {p ? <PlanStateTag state={p.state} /> : <JobStatusTag status={j.status} />}
           </Space>
         }
-        extra={planActions}
+        extra={
+          <Space wrap>
+            {downloads}
+            {planActions}
+          </Space>
+        }
       >
         <Descriptions column={compact ? 2 : 3} size="small">
           <Descriptions.Item label="Da → A">
@@ -169,6 +223,11 @@ export default function JobView({
               <Descriptions.Item label="Approvato da">
                 {j.approvedBy ? `${j.approvedBy} (${fmt(j.approvedAt)})` : '—'}
               </Descriptions.Item>
+              {j.rollbackOfJobId && (
+                <Descriptions.Item label="Ripristina">
+                  <Link to={`/jobs/${j.rollbackOfJobId}`}>stato precedente a questa esecuzione</Link>
+                </Descriptions.Item>
+              )}
               {j.appliedJobId && (
                 <Descriptions.Item label="Esecuzione">
                   <Link to={`/jobs/${j.appliedJobId}`}>vedi esecuzione</Link>

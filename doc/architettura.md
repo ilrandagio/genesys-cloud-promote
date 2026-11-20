@@ -216,11 +216,12 @@ La simulazione prepara e salva esattamente ciò che verrà scritto sul target, s
    - oggetti portati nello stesso job → riferimento Terraform `${risorsa.id}`;
    - ID scritti nei file esportati (JSON degli script, YAML dei flow) → ID del target, oppure segnaposto `{{gcp_N}}` riempito da Terraform con `substitutions` per gli oggetti creati nel job.
 4. **Ordine di creazione**: ogni arco dell'albero (A usa B) tra oggetti portati diventa un `depends_on`; un ciclo emerge qui, non durante l'esecuzione.
-5. **Controlli**: Divisions referenziate ma assenti sul target bloccano la simulazione; anche un riferimento a un oggetto che non esiste sul target e non viene portato (azione *Salta*) ferma la simulazione con l'elenco, invece di far fallire l'esecuzione. Due controlli coprono un'analisi non più attuale: un oggetto da creare che nel frattempo esiste sul target (per esempio creato da un'esecuzione precedente) e un ID di un oggetto del sorgente rimasto nella configurazione perché non compare nell'analisi; in entrambi i casi la simulazione si ferma e chiede di rifare l'analisi.
+5. **Controlli**: le voci TTS dei Flows (blocchi `textToSpeech` nei file YAML esportati, per lingua) devono esistere sul target (`/api/v2/tts/engines`), altrimenti la pubblicazione fallirebbe a metà esecuzione; Divisions referenziate ma assenti sul target bloccano la simulazione; anche un riferimento a un oggetto che non esiste sul target e non viene portato (azione *Salta*) ferma la simulazione con l'elenco, invece di far fallire l'esecuzione. Due controlli coprono un'analisi non più attuale: un oggetto da creare che nel frattempo esiste sul target (per esempio creato da un'esecuzione precedente) e un ID di un oggetto del sorgente rimasto nella configurazione perché non compare nell'analisi; in entrambi i casi la simulazione si ferma e chiede di rifare l'analisi.
 6. **Import** degli oggetti già presenti sul target nello state locale (sola lettura), così vengono aggiornati e non duplicati.
 7. **Piano salvato**: `terraform plan -out`, poi `terraform show -json` per il riepilogo (da creare, aggiornare, cancellare, ricreare, già uguali sul target: un oggetto scelto ma identico sul target compare come "già uguale", non sparisce dal riepilogo).
 8. **Blocco**: un piano che cancella o ricrea oggetti, o che non contiene modifiche, è *non eseguibile* (ricreare un oggetto ne cambia l'ID).
 9. **Artefatto**: la cartella di lavoro completa (configurazione, file, state, piano, lock dei provider) e l'identità del target vengono salvate **cifrate nel database** insieme al plan, valide `PLAN_TTL_HOURS` ore (24 di default). La cartella temporanea viene cancellata.
+10. **File scaricabili**: separatamente, cifrati e senza scadenza, si salvano la configurazione per il target e i file referenziati, l'output del plan e il riepilogo; *File del plan* li scarica in `.tar.gz` (`GET /api/jobs/:id/plan-files`). Esclusi state, tfvars e file di piano binari, che contengono i valori attuali del target.
 
 ### Approvazione ed esecuzione
 
@@ -242,11 +243,16 @@ Se la transazione non riesce, l'API risponde con il motivo preciso (già eseguit
 2. il worker ricontrolla stato del plan, assegnazione, scadenza, approvazione e target abilitato;
 3. ricrea la cartella del plan dall'artefatto e verifica che l'ambiente target abbia ancora la stessa identità (id, nome, regione, client);
 4. **controllo di deriva**: ricalcola il piano sul target e lo confronta con quello salvato (azioni e valori prima/dopo per ogni risorsa); se differiscono non applica nulla e indica gli oggetti cambiati;
-5. `terraform apply` del piano salvato, senza riesportare dal sorgente;
-6. registra le risorse effettivamente scritte, anche se l'esecuzione si interrompe a metà;
-7. cancella l'artefatto: il plan non è più eseguibile.
+5. **stato precedente per il ripristino**: esporta dal target (sola lettura) gli oggetti che il plan aggiorna, con gli stessi accorgimenti della simulazione (URL delle Data Actions, membri e indirizzi delle Queues, Campaigns spente), e lo salva cifrato; Wrap-up Code Mappings, Roles dei Groups e righe delle Data Tables si salvano dai valori precedenti del piano. Se non riesce, l'esecuzione si ferma senza scrivere;
+6. `terraform apply` del piano salvato, senza riesportare dal sorgente;
+7. registra le risorse effettivamente scritte e, dallo state, quelle create, anche se l'esecuzione si interrompe a metà;
+8. cancella l'artefatto: il plan non è più eseguibile.
 
 Un'esecuzione fallita lascia il plan consumato: si rifà la simulazione, che riparte dallo stato reale del target. Nell'interfaccia *Approva*, *Esegui il plan* e *Scarta* chiedono conferma.
+
+**Ripristino.** Su un'esecuzione, *Ripristina lo stato precedente* crea una *simulazione di ripristino* (`POST /api/jobs/:id/rollback`): la configurazione salvata prima della scrittura viene importata dal target con gli ID attuali, così gli oggetti aggiornati tornano com'erano; gli oggetti creati dall'esecuzione entrano nello state senza configurazione, così il piano li cancella. È l'unico caso in cui un piano può cancellare, e solo quegli oggetti: ricreazioni e altre cancellazioni restano bloccate. Poi approvazione, controllo di deriva ed esecuzione come per ogni plan. Non si ricreano oggetti cancellati, Campaigns e Sequences restano spente, e gli oggetti tornano allo stato precedente anche se modificati dopo l'esecuzione (indicato negli avvisi del plan).
+
+**Note di rilascio.** Per ogni esecuzione, *Note di rilascio* genera un documento Markdown (`GET /api/jobs/:id/release-notes`): esito, chi ha simulato, approvato ed eseguito e quando, oggetti portati e del target usati, modifiche con l'indicazione di quelle applicate, avvisi letti all'approvazione e log completo.
 
 ### Modello dati e sicurezza dei dati
 
@@ -255,7 +261,7 @@ Due tabelle reggono tutto; i dati sensibili sono cifrati e non escono mai dal se
 | Tabella | Contenuto principale |
 | --- | --- |
 | `environments` | Short name, regione, client ID, secret cifrato, *solo sorgente*, *richiede approvazione* |
-| `jobs` | Simulazioni ed esecuzioni: oggetti e azioni scelti, archi dell'albero, log, output e riepilogo del piano, motivo di blocco, artefatto cifrato, scadenza, approvatore, collegamento plan ↔ esecuzione, risorse scritte, autore, date |
+| `jobs` | Simulazioni ed esecuzioni: oggetti e azioni scelti, archi dell'albero, log, output e riepilogo del piano, motivo di blocco, artefatto cifrato, file scaricabili cifrati, scadenza, approvatore, collegamento plan ↔ esecuzione, risorse scritte, stato precedente cifrato per il ripristino, collegamento ripristino ↔ esecuzione, autore, date |
 
 Le migrazioni dello schema sono versionate (Drizzle) e applicate all'avvio dell'API.
 
@@ -263,6 +269,7 @@ Le migrazioni dello schema sono versionate (Drizzle) e applicate all'avvio dell'
 | --- | --- |
 | Client secret degli ambienti | AES-256-GCM con `ENCRYPTION_KEY`; mai restituito dalle API |
 | Artefatto del plan (configurazione, state, variabili dell'export) | AES-256-GCM; mai restituito dalle API; cancellato dopo l'esecuzione o alla scadenza (controllo orario) |
+| File scaricabili del plan e stato precedente per il ripristino | AES-256-GCM; i file del plan si scaricano solo da utenti autenticati, senza state né tfvars; lo stato precedente non esce mai dal server |
 | Cartelle di lavoro Terraform | Temporanee, cancellate a fine job (`KEEP_WORKDIR=1` solo per diagnosi) |
 | Credenziali passate a Terraform | Solo come variabili d'ambiente del processo, senza i segreti dell'app |
 | Sessione utente | JWT firmato con `JWT_SECRET`, cookie httpOnly, 8 ore |

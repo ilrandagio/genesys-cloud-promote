@@ -15,6 +15,13 @@
       "when": 1793870104888,
       "tag": "0001_robust_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795175554004,
+      "tag": "0002_rollback_and_plan_files",
+      "breakpoints": true
     }
   ]
 }

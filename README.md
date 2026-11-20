@@ -25,7 +25,13 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
      la selezione resta disponibile e il plan si apre in un pannello laterale;
    - **Approva** (sui target protetti, da una persona diversa da chi ha creato il plan);
    - **Esegui il plan** applica esattamente il piano salvato, una sola volta, dopo aver verificato che il target
-     non sia cambiato.
+     non sia cambiato. Prima di scrivere salva lo stato attuale degli oggetti che aggiorna;
+   - **Ripristina lo stato precedente** (su un'esecuzione): crea una simulazione di ripristino che riporta gli oggetti
+     aggiornati com'erano prima e cancella quelli creati; poi approvazione ed esecuzione come per ogni rilascio;
+   - **File del plan**: scarica in `.tar.gz` la configurazione Terraform che viene applicata, con i file dei flow e degli
+     script, l'output del plan e il riepilogo (senza state);
+   - **Note di rilascio** (su un'esecuzione): documento Markdown con chi ha simulato, approvato ed eseguito, quando,
+     oggetti portati, modifiche applicate, avvisi e log.
 4. **Storico**: simulazioni ed esecuzioni con stato del plan, modifiche, chi ha simulato, approvato ed eseguito,
    risorse scritte, log e output (audit).
 
@@ -75,6 +81,10 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 - **Roles e licenze del target**: il target può avere licenze diverse dal sorgente (es. sviluppo CX3, target CX1). In simulazione il worker legge i permessi disponibili sul target (`GET /api/v2/authorization/permissions`) e confronta ogni permesso `domain:entity:action` dei Roles portati (un `*` vale se il domain o l'entity esistono sul target). Un permesso non disponibile **ferma la simulazione** con l'elenco. Con l'opzione **"Porta senza i permessi non disponibili"** sulla riga del Role, quei permessi vengono tolti (una policy senza più action viene tolta intera): ogni rimozione compare nel log e negli avvisi del plan ("Da leggere prima di approvare"). Se in seguito il target ottiene le licenze, i permessi si aggiungono rifacendo il porting del Role.
 - **Flow Outcomes e Flow Milestones**: sono citati dai Flows (azioni *Initialize/Set Flow Outcome* e *Set Flow Milestone*) e compaiono come loro dipendenze; si portano con nome, descrizione e Division, o si usa quello del target con lo stesso nome. Portati nello stesso rilascio, vengono creati prima dei Flows che li usano.
 - **Triggers (Process Automation)**: si portano Topic, condizioni (`matchCriteria`), Data Format e tempi; il Workflow di destinazione è una dipendenza e viene portato o abbinato per nome come gli altri Flows. Gli ID citati nelle condizioni (es. Queue, Campaign) vengono rimappati sugli oggetti del target; un ID non riconosciuto, come un utente, ferma la simulazione, perché sul target la condizione non scatterebbe mai.
+- **Voci TTS dei Flows verificate sul target**: in simulazione si leggono dai file YAML esportati le voci dei blocchi
+  `textToSpeech` di ogni lingua e si controlla che il target le abbia per la stessa lingua (`/api/v2/tts/engines`). Una
+  voce mancante ferma la simulazione con le voci disponibili, invece di far fallire la pubblicazione a metà esecuzione;
+  se l'elenco del target non è leggibile si prosegue con un avviso.
 - **Gli utenti non si portano mai**: né come membri od owner di Groups e Queues, né come assegnatari dei Roles. Un Role
   con una condizione su un utente specifico ferma la simulazione (l'ID dell'utente è diverso sul target).
 - **Dati delle Data Tables (opzionale)**: di default si porta solo la struttura. Con *Porta anche i dati (righe)* sulla riga
@@ -263,6 +273,9 @@ prefisso. Aggiornamento: `git pull && docker compose up -d --build`.
 - **Dipendenze non gestite** (Users, Groups, Divisions, Data Tables, Bots…) sono mostrate in analisi ma non portate:
   vanno verificate a mano sul target.
 - **Match per nome**: oggetti con lo stesso nome in Divisions diverse non sono distinti.
+- **Ripristino**: non ricrea oggetti cancellati da un'esecuzione (oggi solo un ripristino cancella), lascia spente
+  Campaigns e Sequences che prima erano attive e riporta gli oggetti allo stato precedente anche se modificati dopo.
+  Disponibile per le esecuzioni fatte da questa versione in poi.
 - **Data Tables**: di default viene portata la struttura; le righe solo se richiesto (vedi sopra).
 - **Flow**: si porta l'ultima versione pubblicata; la Dependency Tracking API richiede che il flow sia pubblicato.
 - Va validato su org reali il formato dell'export (nomi delle label, riferimenti tra risorse) con la versione

@@ -26,7 +26,12 @@ export default function JobsPage() {
           {
             title: 'Tipo',
             dataIndex: 'mode',
-            render: (m: string) => (m === 'PLAN' ? <Tag>Simulazione</Tag> : <Tag color="red">Esecuzione</Tag>),
+            render: (m: string, j) =>
+              m === 'PLAN' ? (
+                j.rollbackOfJobId ? <Tag color="orange">Ripristino</Tag> : <Tag>Simulazione</Tag>
+              ) : (
+                <Tag color="red">Esecuzione</Tag>
+              ),
           },
           { title: 'Da', dataIndex: 'sourceName' },
           {

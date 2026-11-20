@@ -72,12 +72,24 @@ export const jobs = pgTable('jobs', {
   approvedAt: timestamp('approved_at'),
   /** Job APPLY che ha consumato questo plan (un plan si esegue una sola volta) */
   appliedJobId: uuid('applied_job_id'),
+  /**
+   * File della configurazione da scaricare (export rimappato e file referenziati, output del plan), cifrati.
+   * Senza state, tfvars e file di piano binario. Restano anche dopo l'esecuzione
+   */
+  planFilesEncrypted: text('plan_files_encrypted'),
+  /** Plan di ripristino: esecuzione di cui riporta il target allo stato precedente */
+  rollbackOfJobId: uuid('rollback_of_job_id'),
 
   // ---- Solo APPLY ----
   /** Plan da cui deriva questo porting */
   planJobId: uuid('plan_job_id'),
   /** Risorse effettivamente presenti nello state dopo l'apply (anche in caso di esito parziale) */
   appliedResources: jsonb('applied_resources').$type<string[]>(),
+  /**
+   * Stato del target prima dell'esecuzione (export degli oggetti aggiornati) e oggetti creati, cifrati:
+   * servono al plan di ripristino
+   */
+  rollbackEncrypted: text('rollback_encrypted'),
 }, (t) => [
   // Garanzia a livello di database: un plan può generare al massimo un porting
   uniqueIndex('jobs_plan_job_id_unique').on(t.planJobId),

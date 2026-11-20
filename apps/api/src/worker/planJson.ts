@@ -4,6 +4,9 @@ import type { PlanSummary } from '../lib/schema.js';
 export interface PlanJson {
   resource_changes?: {
     address: string;
+    mode?: string;
+    type?: string;
+    name?: string;
     change: { actions: string[]; before?: unknown; after?: unknown; after_unknown?: unknown };
   }[];
 }
@@ -33,8 +36,11 @@ export function summarize(plan: PlanJson): PlanSummary {
  * Cancellazioni e ricreazioni sono escluse per principio: ricreare un oggetto ne cambia l'ID
  * e rompe tutto ciò che lo referenzia (flow, script, code...).
  */
-export function blockReason(summary: PlanSummary): string | undefined {
-  const bad = summary.changes.filter((c) => c.actions.includes('delete'));
+export function blockReason(summary: PlanSummary, allowedDeletes?: Set<string>): string | undefined {
+  // Ammesse solo cancellazioni pure di risorse indicate (ripristino: oggetti creati dal rilascio annullato)
+  const bad = summary.changes.filter(
+    (c) => c.actions.includes('delete') && (c.actions.includes('create') || !allowedDeletes?.has(c.address)),
+  );
   if (!bad.length) return undefined;
   return (
     `Il piano cancella o ricrea ${bad.length} oggetti (${bad.map((c) => c.address).join(', ')}). ` +

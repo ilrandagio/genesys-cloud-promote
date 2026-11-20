@@ -1,10 +1,28 @@
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { GenesysClient, PermissionError } from '../genesys/client.js';
 import { CATALOG, WRAPUP_MAPPINGS_ID, listObjects } from '../genesys/catalog.js';
 import { lazyIdIndex } from '../genesys/dependencies.js';
+import { parse as parseYaml } from 'yaml';
 import { ID_TOKEN_G, idKey } from '../genesys/ids.js';
+
+/** Voci TTS dei Flows da portare, lette dai loro file YAML esportati */
+async function voicesOfFlows(cfg: TfJson, addresses: Map<PortItem, string>, baseDir: string): Promise<FlowVoice[]> {
+  const out: FlowVoice[] = [];
+  for (const [it, addr] of addresses) {
+    if (it.type !== 'flow') continue;
+    const filepath = cfg.resource?.genesyscloud_flow?.[addr.slice('genesyscloud_flow.'.length)]?.filepath;
+    if (typeof filepath !== 'string' || filepath.includes('${')) continue;
+    try {
+      const text = await readFile(path.resolve(baseDir, ...filepath.split(/[\\/]+/)), 'utf8');
+      out.push(...flowVoices(it.name, parseYaml(text)));
+    } catch {
+      // file non leggibile o non YAML: lo segnala già il controllo dei file esportati
+    }
+  }
+  return out;
+}
 
 /** Per ogni Trigger della configurazione, i GUID citati nelle condizioni (match_criteria) */
 function triggerCriteriaIds(cfg: TfJson): Map<string, Set<string>> {
@@ -22,13 +40,16 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../lib/db.js';
 import type { Environment } from '../lib/schema.js';
 import { getEnvironment } from '../lib/repo.js';
-import { packArtifact, unpackArtifact } from './artifact.js';
+import { packArtifact, packPlanFiles, unpackArtifact } from './artifact.js';
 import {
   alignWebDeploymentVersions,
   applyDataTableRows,
   applyGroupRoles,
   checkRoleUserConditions,
   filterRolePermissions,
+  checkFlowVoices,
+  flowVoices,
+  type FlowVoice,
   applyActionRequestSettings,
   applyQueueMembership,
   applySafetyRules,
@@ -41,7 +62,6 @@ import { appliedFromOutput, blockReason, comparableChanges, describeDrift, summa
 import {
   addDependsOn,
   ensureProvider,
-  includeFilter,
   remainingGuids,
   remapConfig,
   dropFlowContentHash,
@@ -51,6 +71,8 @@ import {
   unexportedFiles,
   type TfJson,
 } from './exportConfig.js';
+import { exportObjects } from './exporter.js';
+import { createdResources, openSnapshot, prepareRollback, sealSnapshot, takeRollbackSnapshot, type RollbackSnapshot } from './rollback.js';
 import { terraform, tfOrThrow, type TfCreds } from './terraform.js';
 
 /** Log del job bufferizzato e salvato su DB ogni secondo */
@@ -108,7 +130,8 @@ export async function runPortingJob(jobId: string) {
   const workDir = path.join(config.WORK_DIR, jobId);
 
   try {
-    if (job.mode === 'PLAN') await runPlan(job, workDir, log, setJob);
+    if (job.mode === 'PLAN' && job.rollbackOfJobId) await runRollbackPlan(job, workDir, log, setJob);
+    else if (job.mode === 'PLAN') await runPlan(job, workDir, log, setJob);
     else await runApply(job, workDir, log, setJob);
     log.info('Completato');
     await log.close();
@@ -140,68 +163,22 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const srcCreds = credsOf(sourceEnv);
   const tgtCreds = credsOf(targetEnv);
 
-  // Membri di Queues e Groups mai esportati (sul target restano quelli presenti). Solo per i tipi esportati:
-  // il provider rifiuta l'esclusione di attributi di tipi non esportati
-  const excluded = [
-    ...(toExport.some((i) => i.type === 'queue')
-      ? [
-          'genesyscloud_routing_queue.members',
-          'genesyscloud_routing_queue.groups',
-          'genesyscloud_routing_queue.teams',
-          'genesyscloud_routing_queue.skill_groups',
-        ]
-      : []),
-    ...(toExport.some((i) => i.type === 'group') ? ['genesyscloud_group.member_ids', 'genesyscloud_group.owner_ids'] : []),
-    ...(toExport.some((i) => i.type === 'team') ? ['genesyscloud_team.member_ids'] : []),
-  ];
-
   // ---- 1. Export dal sorgente ----
-  // Mai un export senza filtro: esporterebbe l'intera org
   let cfg: TfJson = { resource: {} };
   let cfgPath = path.join(exportDir, 'genesyscloud.tf.json');
   if (!toExport.length) {
     await mkdir(exportDir, { recursive: true });
     log.info('Nessun oggetto da esportare dal sorgente: solo oggetti unici per org');
   } else {
-    await mkdir(runnerDir, { recursive: true });
-    const runner = {
-      terraform: {
-        required_providers: { genesyscloud: { source: 'mypurecloud/genesyscloud', version: config.GENESYS_PROVIDER_VERSION } },
-      },
-      provider: { genesyscloud: {} },
-      resource: {
-        genesyscloud_tf_export: {
-          export: {
-            // Percorso relativo con "/": su Windows un percorso assoluto (c:\...) viene scambiato
-            // dal provider per un URL ("unsupported protocol scheme c") quando scarica script e prompt
-            directory: path.relative(runnerDir, exportDir).split(path.sep).join('/'),
-            export_format: 'json',
-            include_state_file: false,
-            enable_dependency_resolution: false,
-            // Il vecchio esportatore dei flow non scrive i file YAML: lascia il percorso come variabile da
-            // compilare a mano (var.genesyscloud_flow_..._filepath) e il plan fallisce con "empty file path"
-            use_legacy_architect_flow_exporter: false,
-            split_files_by_resource: false,
-            include_filter_resources: toExport.map(includeFilter),
-            // Membri delle Queue mai esportati: sul target restano quelli presenti. Solo se si esportano Queue:
-            // il provider rifiuta l'esclusione di attributi di tipi non esportati
-            ...(excluded.length ? { exclude_attributes: excluded } : {}),
-          },
-        },
-      },
-    };
-    await writeFile(path.join(runnerDir, 'main.tf.json'), JSON.stringify(runner, null, 2));
-    log.info(
-      `Export da ${sourceEnv.name} (genesyscloud_tf_export): sola lettura, i file vengono scritti in locale. ` +
-        `"Apply complete" qui sotto si riferisce alla sola risorsa di export.`,
-    );
-    await tfOrThrow(['init', '-no-color', '-input=false'], runnerDir, srcCreds, log.line);
-    await tfOrThrow(['apply', '-no-color', '-auto-approve', '-input=false'], runnerDir, srcCreds, log.line);
-
-    const exportFile = (await readdir(exportDir)).find((f) => f.endsWith('.tf.json'));
-    if (!exportFile) throw new Error('Export senza file .tf.json');
-    cfgPath = path.join(exportDir, exportFile);
-    cfg = JSON.parse(await readFile(cfgPath, 'utf8')) as TfJson;
+    ({ cfg, cfgPath } = await exportObjects({
+      items: toExport,
+      runnerDir,
+      exportDir,
+      creds: srcCreds,
+      orgName: sourceEnv.name,
+      line: log.line,
+      info: log.info,
+    }));
   }
 
   // ---- 2. Selezione risorse e rimappatura ID ----
@@ -251,6 +228,13 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
         `Il percorso è rimasto una variabile da compilare: l'oggetto non può essere portato con questo export.`,
     );
   }
+
+  // Pre-controllo: voci TTS dei Flows portati disponibili sul target (altrimenti la pubblicazione fallisce)
+  const voiceWarnings = await checkFlowVoices(
+    await voicesOfFlows(cfg, addresses, path.dirname(cfgPath)),
+    new GenesysClient(targetEnv),
+    log.info,
+  );
 
   // ID sorgente -> ID target: dipendenze riusate (o già presenti) e divisioni abbinate per nome
   const targetIds = new Map<string, string>();
@@ -305,7 +289,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // Utenti mai portati: nessun Role può citare un utente del sorgente
   checkRoleUserConditions(cfg);
   // Roles: permessi che il target non ha (licenze diverse) → errore, oppure tolti se richiesto
-  const planWarnings = await filterRolePermissions(cfg, addresses, targetClient, log.info);
+  const planWarnings = [...voiceWarnings, ...(await filterRolePermissions(cfg, addresses, targetClient, log.info))];
 
   // Groups: Roles assegnati sul sorgente, assegnati anche sul target
   const extraImports: { addr: string; id: string }[] = [];
@@ -454,12 +438,30 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   }
 
   // ---- 4. Piano salvato ----
+  await savePlan({ exportDir, targetEnv, tgtCreds, log, setJob, warnings: planWarnings });
+}
+
+/**
+ * Calcola il piano salvato nella cartella di lavoro, ne verifica l'eseguibilità e salva artefatto cifrato e
+ * file scaricabili. allowedDeletes: cancellazioni ammesse (solo nei plan di ripristino, per gli oggetti creati
+ * dal rilascio da annullare); ricreazioni mai ammesse.
+ */
+async function savePlan(opts: {
+  exportDir: string;
+  targetEnv: Environment;
+  tgtCreds: TfCreds;
+  log: JobLog;
+  setJob: SetJob;
+  warnings: string[];
+  allowedDeletes?: Set<string>;
+}) {
+  const { exportDir, targetEnv, tgtCreds, log, setJob, warnings, allowedDeletes } = opts;
   log.info(`Piano delle modifiche su ${targetEnv.name} (nessuna modifica applicata)`);
   const plan = await tfOrThrow(['plan', '-no-color', '-input=false', `-out=${PLAN_FILE}`], exportDir, tgtCreds, log.line);
   const planJson = await showPlan(exportDir, PLAN_FILE, tgtCreds);
   const summary = summarize(planJson);
-  if (planWarnings.length) summary.warnings = planWarnings;
-  let blockedReason = blockReason(summary);
+  if (warnings.length) summary.warnings = warnings;
+  let blockedReason = blockReason(summary, allowedDeletes);
   if (!blockedReason && !summary.changes.length) blockedReason = 'Il piano non contiene modifiche: niente da eseguire.';
   log.info(
     `Riepilogo: ${summary.add} da creare, ${summary.change} da aggiornare, ` +
@@ -475,7 +477,56 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
       });
   const expiresAt = new Date(Date.now() + config.PLAN_TTL_HOURS * 3600_000);
   if (!blockedReason) log.info(`Plan eseguibile fino al ${expiresAt.toISOString()}`);
-  await setJob({ planOutput: plan.output, planSummary: summary, blockedReason, artifactEncrypted, expiresAt });
+  // Configurazione scaricabile dall'interfaccia (anche dopo l'esecuzione, anche se il plan è bloccato)
+  const planFilesEncrypted = await packPlanFiles(exportDir, {
+    'plan.txt': plan.output,
+    'riepilogo.json': JSON.stringify({ ...summary, blockedReason: blockedReason ?? null }, null, 2),
+  });
+  await setJob({ planOutput: plan.output, planSummary: summary, blockedReason, artifactEncrypted, expiresAt, planFilesEncrypted });
+}
+
+/**
+ * Plan di ripristino: riporta il target allo stato precedente a un'esecuzione. Oggetti aggiornati come erano
+ * prima (dallo stato salvato prima della scrittura), oggetti creati cancellati. Poi approvazione ed esecuzione
+ * come per ogni plan: il controllo di deriva vale anche qui.
+ */
+async function runRollbackPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob) {
+  const [apply] = await db.select().from(schema.jobs).where(eq(schema.jobs.id, job.rollbackOfJobId!));
+  if (!apply || apply.mode !== 'APPLY') throw new Error('Esecuzione da annullare non trovata');
+  if (!apply.rollbackEncrypted) throw new Error("Stato precedente all'esecuzione non disponibile: ripristino non possibile");
+  if (apply.targetEnvId !== job.targetEnvId) throw new Error("Il target non corrisponde a quello dell'esecuzione");
+  const targetEnv = await getEnvironment(job.targetEnvId);
+  const snapshot = openSnapshot(apply.rollbackEncrypted);
+  if (snapshot.targetEnvId !== targetEnv.id) throw new Error("Lo stato salvato appartiene a un altro ambiente");
+
+  log.info(
+    `Ripristino su ${targetEnv.name}: stato precedente all'esecuzione ${apply.id} del ${apply.createdAt.toISOString()} ` +
+      `(salvato il ${snapshot.takenAt})`,
+  );
+  log.info('SIMULAZIONE: nessuna modifica verrà applicata');
+  if (!snapshot.imports.length && !snapshot.created.length) throw new Error("L'esecuzione non ha modificato nulla di ripristinabile");
+
+  const tgtCreds = credsOf(targetEnv);
+  const exportDir = path.join(workDir, 'export');
+  await mkdir(exportDir, { recursive: true });
+  const allowedDeletes = await prepareRollback({
+    snapshot,
+    dir: exportDir,
+    creds: tgtCreds,
+    providerVersion: config.GENESYS_PROVIDER_VERSION,
+    line: log.line,
+    info: log.info,
+  });
+
+  const warnings = [
+    "Gli oggetti tornano com'erano prima dell'esecuzione: eventuali modifiche fatte dopo vanno perse.",
+    ...(allowedDeletes.size ? [`Oggetti creati dall'esecuzione che verranno cancellati: ${[...allowedDeletes].join(', ')}`] : []),
+    ...snapshot.notRestorable.map((n) => `Non ripristinabile in automatico: ${n}`),
+    ...(Object.keys(snapshot.cfg.resource ?? {}).some((t) => t.startsWith('genesyscloud_outbound_campaign') || t === 'genesyscloud_outbound_sequence')
+      ? ['Campaigns e Campaign Sequences restano spente anche se prima erano attive: si riavviano a mano.']
+      : []),
+  ];
+  await savePlan({ exportDir, targetEnv, tgtCreds, log, setJob, warnings, allowedDeletes });
 }
 
 /** Esecuzione: applica il piano salvato del plan collegato, solo se il target non è cambiato */
@@ -526,11 +577,31 @@ async function runApply(job: JobRow, workDir: string, log: JobLog, setJob: SetJo
     }
     log.info('Nessuna differenza rispetto alla simulazione');
 
+    // ---- Stato attuale degli oggetti che verranno modificati, per un eventuale ripristino ----
+    log.info(`Salvataggio dello stato attuale su ${targetEnv.name} degli oggetti da aggiornare (sola lettura), per il ripristino`);
+    let snapshot: RollbackSnapshot;
+    try {
+      snapshot = await takeRollbackSnapshot({
+        plan: saved,
+        targetEnv,
+        creds: tgtCreds,
+        workDir: path.join(workDir, 'snapshot'),
+        line: log.line,
+        info: log.info,
+      });
+    } catch (e) {
+      throw new Error(
+        `Impossibile salvare lo stato attuale per il ripristino: nessuna modifica applicata. ${(e as Error).message}`,
+      );
+    }
+
     // ---- Applicazione del piano salvato ----
     log.info(`Scrittura su ${targetEnv.name}: applicazione del piano salvato`);
     const res = await terraform(['apply', '-no-color', '-input=false', artifact.planFile], dir, tgtCreds, log.line);
     const applied = appliedFromOutput(res.output);
-    await setJob({ appliedResources: applied });
+    // Oggetti creati (anche con esito parziale): nel ripristino vanno cancellati
+    snapshot.created = await createdResources(dir, saved);
+    await setJob({ appliedResources: applied, rollbackEncrypted: sealSnapshot(snapshot) });
     if (res.code !== 0) {
       throw new Error(
         `Esecuzione interrotta con errore. Modifiche applicate prima dell'errore (${applied.length}): ` +

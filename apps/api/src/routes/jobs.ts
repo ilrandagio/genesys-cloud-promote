@@ -7,7 +7,14 @@ import { OBJECT_TYPES, isStaticDataAction } from '../genesys/types.js';
 import { db, schema } from '../lib/db.js';
 import { enqueuePorting } from '../lib/queue.js';
 import { getEnvironment, HttpError } from '../lib/repo.js';
+import { unpackPlanFiles } from '../worker/artifact.js';
+import { tarGz } from '../lib/tar.js';
 import { requireAuth, sessionUser, type SessionUser } from './auth.js';
+import { buildReleaseNotes } from './releaseNotes.js';
+
+/** Parte di nome file sicura (nomi degli ambienti) */
+const fileSafe = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'ambiente';
+const stamp = (d: Date) => d.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
 
 const itemSchema = z.object({
   type: z.enum(OBJECT_TYPES),
@@ -61,6 +68,9 @@ const publicFields = {
   planJobId: j.planJobId,
   appliedResources: j.appliedResources,
   artifactAvailable: sql<boolean>`${j.artifactEncrypted} is not null`,
+  planFilesAvailable: sql<boolean>`${j.planFilesEncrypted} is not null`,
+  rollbackOfJobId: j.rollbackOfJobId,
+  rollbackAvailable: sql<boolean>`${j.rollbackEncrypted} is not null`,
 };
 
 type PublicJob = Awaited<ReturnType<typeof selectJobs>>[number];
@@ -282,6 +292,71 @@ export async function jobRoutes(app: FastifyInstance) {
       .set({ artifactEncrypted: null, expiresAt: new Date() })
       .where(and(eq(j.id, id), isNull(j.appliedJobId)));
     return { ok: true };
+  });
+
+  /**
+   * Configurazione di un plan (o del plan di un'esecuzione) come .tar.gz: export rimappato per il target,
+   * file referenziati, output del plan e riepilogo. Senza state né file di piano binario
+   */
+  app.get('/api/jobs/:id/plan-files', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [job] = await db.select().from(j).where(eq(j.id, id));
+    if (!job) throw new HttpError(404, 'Job non trovato');
+    const [plan] = job.mode === 'PLAN' ? [job] : job.planJobId ? await db.select().from(j).where(eq(j.id, job.planJobId)) : [];
+    if (!plan?.planFilesEncrypted) throw new HttpError(404, 'File del plan non disponibili (simulazione non completata o precedente a questa funzione)');
+    const target = await getEnvironment(plan.targetEnvId);
+    const name = `plan-${fileSafe(target.name)}-${stamp(plan.createdAt)}.tar.gz`;
+    req.log.info({ plan: plan.id, by: sessionUser(req).sub }, 'Download dei file del plan');
+    return reply
+      .header('Content-Type', 'application/gzip')
+      .header('Content-Disposition', `attachment; filename="${name}"`)
+      .send(tarGz(unpackPlanFiles(plan.planFilesEncrypted), plan.createdAt));
+  });
+
+  /** Note di rilascio di un'esecuzione (Markdown) */
+  app.get('/api/jobs/:id/release-notes', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [apply] = await db.select().from(j).where(eq(j.id, id));
+    if (!apply || apply.mode !== 'APPLY') throw new HttpError(404, 'Esecuzione non trovata');
+    const [plan] = apply.planJobId ? await db.select().from(j).where(eq(j.id, apply.planJobId)) : [];
+    const [rollbackOf] = plan?.rollbackOfJobId ? await db.select().from(j).where(eq(j.id, plan.rollbackOfJobId)) : [];
+    const source = await getEnvironment(apply.sourceEnvId);
+    const target = await getEnvironment(apply.targetEnvId);
+    const md = buildReleaseNotes({ apply, plan, sourceName: source.name, targetName: target.name, rollbackOf });
+    return reply
+      .header('Content-Type', 'text/markdown; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="note-di-rilascio-${fileSafe(target.name)}-${stamp(apply.createdAt)}.md"`)
+      .send(md);
+  });
+
+  /**
+   * Ripristino: crea un plan che riporta il target allo stato precedente a un'esecuzione (oggetti aggiornati
+   * come erano prima, oggetti creati cancellati). Segue il percorso normale: simulazione, approvazione, esecuzione
+   */
+  app.post('/api/jobs/:id/rollback', async (req) => {
+    const { id } = req.params as { id: string };
+    const [apply] = await db.select().from(j).where(eq(j.id, id));
+    if (!apply || apply.mode !== 'APPLY') throw new HttpError(404, 'Esecuzione non trovata');
+    if (apply.status === 'QUEUED' || apply.status === 'RUNNING') throw new HttpError(409, 'Esecuzione ancora in corso');
+    if (!apply.rollbackEncrypted) {
+      throw new HttpError(409, 'Stato precedente non disponibile per questa esecuzione (precedente a questa funzione o non arrivata alla scrittura)');
+    }
+    const target = await getEnvironment(apply.targetEnvId);
+    if (!target.allowAsTarget) throw new HttpError(400, `${target.name} non è abilitato come target`);
+    const [job] = await db
+      .insert(j)
+      .values({
+        mode: 'PLAN',
+        sourceEnvId: apply.targetEnvId,
+        targetEnvId: apply.targetEnvId,
+        items: apply.items,
+        rollbackOfJobId: apply.id,
+        createdBy: sessionUser(req).sub,
+      })
+      .returning({ id: j.id });
+    await enqueuePorting(job.id);
+    req.log.info({ apply: id, rollbackPlan: job.id, by: sessionUser(req).sub }, 'Plan di ripristino richiesto');
+    return job;
   });
 
   app.get('/api/jobs', async (req) => {

@@ -740,3 +740,91 @@ export function applyActionRequestSettings(cfg: TfJson, addresses: Map<PortItem,
   }
   if (missing.length) throw new Error(`Valori del target mancanti: ${missing.join(', ')}`);
 }
+
+/** Voce TTS usata da un Flow per una lingua (dal file YAML esportato) */
+export interface FlowVoice {
+  flow: string;
+  language?: string;
+  engine?: string;
+  voice: string;
+}
+
+/** Valore letterale di Archy: stringa semplice oppure { lit: "..." } */
+const literal = (v: unknown): string | undefined =>
+  typeof v === 'string' ? v : v && typeof v === 'object' && typeof (v as any).lit === 'string' ? (v as any).lit : undefined;
+
+/**
+ * Voci TTS indicate nel YAML di un Flow (blocchi textToSpeech, di solito sotto supportedLanguages.<lingua>).
+ * La lingua è la chiave sotto supportedLanguages; il motore è il valore di "engine" accanto alla voce, se c'è.
+ */
+export function flowVoices(flow: string, doc: unknown): FlowVoice[] {
+  const out: FlowVoice[] = [];
+  const walkTts = (node: unknown, language: string | undefined) => {
+    if (Array.isArray(node)) return node.forEach((n) => walkTts(n, language));
+    if (!node || typeof node !== 'object') return;
+    const o = node as Record<string, unknown>;
+    const voice = literal(o.voice);
+    if (voice) out.push({ flow, language, engine: literal(o.engine), voice });
+    for (const [k, v] of Object.entries(o)) if (k !== 'voice') walkTts(v, language);
+  };
+  const walk = (node: unknown, keys: string[]) => {
+    if (Array.isArray(node)) return node.forEach((n) => walk(n, keys));
+    if (!node || typeof node !== 'object') return;
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (k === 'textToSpeech') {
+        const i = keys.lastIndexOf('supportedLanguages');
+        walkTts(v, i >= 0 ? keys[i + 1] : undefined);
+      } else walk(v, [...keys, k]);
+    }
+  };
+  walk(doc, []);
+  return out;
+}
+
+/**
+ * Pre-controllo: le voci TTS dei Flows portati devono esistere sul target per la stessa lingua. Altrimenti la
+ * pubblicazione del Flow fallisce solo in esecuzione, a metà rilascio. Una voce mancante ferma la simulazione;
+ * se l'elenco delle voci del target non è leggibile si prosegue con un avviso.
+ */
+export async function checkFlowVoices(
+  voices: FlowVoice[],
+  target: Reader & { listAll<T = any>(path: string, extraQuery?: string): Promise<T[]> },
+  log: Log,
+): Promise<string[]> {
+  if (!voices.length) return [];
+  let engines: { name?: string; voices?: { name?: string; language?: string }[] }[];
+  try {
+    engines = await target.listAll('/api/v2/tts/engines', '&includeVoices=true');
+  } catch (e) {
+    const w = `Voci TTS del target non leggibili, controllo saltato: ${(e as Error).message}`;
+    log(w);
+    return [w];
+  }
+  const available = engines.flatMap((e) =>
+    (e.voices ?? []).map((v) => ({ display: v.name ?? '', name: (v.name ?? '').toLowerCase(), language: (v.language ?? '').toLowerCase() })),
+  );
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const v of voices) {
+    const key = `${v.flow}|${v.language}|${v.voice}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const ok = available.some(
+      (a) => a.name === v.voice.toLowerCase() && (!v.language || !a.language || a.language === v.language.toLowerCase()),
+    );
+    if (ok) continue;
+    const forLanguage = [...new Set(available.filter((a) => !v.language || a.language === v.language.toLowerCase()).map((a) => a.display))];
+    missing.push(
+      `Flow "${v.flow}": voce "${v.voice}"${v.language ? ` (${v.language})` : ''}${v.engine ? `, motore ${v.engine}` : ''}` +
+        (forLanguage.length ? `; disponibili sul target: ${forLanguage.slice(0, 8).join(', ')}${forLanguage.length > 8 ? '…' : ''}` : '; nessuna voce per questa lingua sul target'),
+    );
+  }
+  if (missing.length) {
+    throw new Error(
+      `Voci TTS dei Flows non disponibili sul target (la pubblicazione fallirebbe in esecuzione): ${missing.join(' · ')}. ` +
+        `Cambiare la voce sul sorgente oppure renderla disponibile sul target, poi rifare la simulazione.`,
+    );
+  }
+  log(`Voci TTS dei Flows verificate sul target: ${seen.size}`);
+  return [];
+}

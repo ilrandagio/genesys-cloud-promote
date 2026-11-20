@@ -19,6 +19,8 @@ const REFERENCE_TYPES: ObjectType[] = (
     'schedule',
     'schedulegroup',
     'emergencygroup',
+    'flowoutcome',
+    'flowmilestone',
     'integration',
     'script',
   ] as ObjectType[]

@@ -13,6 +13,8 @@ export type ObjectType =
   | 'team'
   | 'skillgroup'
   | 'trigger'
+  | 'flowoutcome'
+  | 'flowmilestone'
   | 'role'
   | 'division'
   | 'script'

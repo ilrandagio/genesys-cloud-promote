@@ -41,12 +41,17 @@ export const OBJECT_TYPES = [
   'responseasset',
   // Architect: Process Automation
   'trigger',
+  // Architect: Flow Outcomes e Milestones (citati per ID dai Flows)
+  'flowoutcome',
+  'flowmilestone',
   // Outbound, oggetto unico per org
   'wrapupmapping',
 ] as const;
 
 /** Tipi che in Genesys Cloud appartengono a una divisione */
 export const DIVISIONED_TYPES: ReadonlySet<ObjectType> = new Set<ObjectType>([
+  'flowoutcome',
+  'flowmilestone',
   'team',
   'skillgroup',
   'flow',

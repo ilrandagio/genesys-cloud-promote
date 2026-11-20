@@ -45,6 +45,22 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_flow',
     comparable: false,
   },
+  flowoutcome: {
+    group: 'Architect',
+    label: 'Flow Outcome',
+    listPath: '/api/v2/flows/outcomes',
+    getPath: '/api/v2/flows/outcomes/{id}',
+    tfType: 'genesyscloud_flow_outcome',
+    comparable: true,
+  },
+  flowmilestone: {
+    group: 'Architect',
+    label: 'Flow Milestone',
+    listPath: '/api/v2/flows/milestones',
+    getPath: '/api/v2/flows/milestones/{id}',
+    tfType: 'genesyscloud_flow_milestone',
+    comparable: true,
+  },
   trigger: {
     group: 'Architect',
     label: 'Trigger',
@@ -442,6 +458,10 @@ export function fromDependencyType(dtType: string): ObjectType | undefined {
       return 'datatable';
     case 'EMERGENCYGROUP':
       return 'emergencygroup';
+    case 'FLOWOUTCOME':
+      return 'flowoutcome';
+    case 'FLOWMILESTONE':
+      return 'flowmilestone';
     default:
       return dtType.endsWith('FLOW') || dtType === 'WORKFLOW' ? 'flow' : undefined;
   }

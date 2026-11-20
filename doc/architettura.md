@@ -147,7 +147,7 @@ Uno Script agente cita gli oggetti dell'org per **ID**, scritti nel suo JSON: ne
 
 | Area | Tipi |
 | --- | --- |
-| Architect | Flow, Schedule, Schedule Group, User Prompt, Script, Data Table, Emergency Group, Trigger |
+| Architect | Flow, Schedule, Schedule Group, User Prompt, Script, Data Table, Emergency Group |
 | Routing | Queue, ACD Skill, Wrap-up Code, Language, Skill Expression Group |
 | Integrations | Data Action, Integration |
 | Outbound | Campaign, Messaging Campaign, Campaign Sequence, Contact List, Contact List Filter, DNC List, Call Analysis Response Set, Rule Set, Digital Rule Set, Campaign Rule, Attempt Limit, Callable Time Set, File Specification Template |

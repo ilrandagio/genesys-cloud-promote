@@ -12,6 +12,7 @@ export type ObjectType =
   | 'group'
   | 'team'
   | 'skillgroup'
+  | 'trigger'
   | 'role'
   | 'division'
   | 'script'

@@ -45,6 +45,28 @@ export const CATALOG: Record<ObjectType, TypeDef> = {
     tfType: 'genesyscloud_flow',
     comparable: false,
   },
+  trigger: {
+    group: 'Architect',
+    label: 'Trigger',
+    listPath: '/api/v2/processautomation/triggers',
+    getPath: '/api/v2/processautomation/triggers/{id}',
+    tfType: 'genesyscloud_processautomation_trigger',
+    // Paginazione a cursore (after / nextUri), non a numero di pagina
+    list: async (c) => {
+      const out: any[] = [];
+      let after: string | undefined;
+      for (let i = 0; i < 1000; i++) {
+        const q = new URLSearchParams({ pageSize: '100', ...(after ? { after } : {}) });
+        const page = await c.get<{ entities?: any[]; nextUri?: string }>(`/api/v2/processautomation/triggers?${q}`);
+        out.push(...(page.entities ?? []));
+        const next = page.nextUri ? new URL(page.nextUri, 'https://x').searchParams.get('after') : null;
+        if (!next || next === after || !page.entities?.length) break;
+        after = next;
+      }
+      return out;
+    },
+    comparable: true,
+  },
   queue: {
     group: 'Routing',
     label: 'Queue',

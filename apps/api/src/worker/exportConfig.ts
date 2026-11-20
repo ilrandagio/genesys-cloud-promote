@@ -86,9 +86,10 @@ export function includeFilter(item: PortItem): string {
   // Niente ancora iniziale dove la label ha un prefisso prima del nome:
   // - Flows: il tipo (es. INBOUNDCALL_Main_IVR);
   // - Data Actions: la categoria (es. Isybank_FDI_WS_authenticate; per le azioni statiche anche l'integrazione);
-  // - Canned Responses: i nomi delle Libraries (es. PBZ_Email_EMAIL_PBZ365).
+  // - Canned Responses: i nomi delle Libraries (es. PBZ_Email_EMAIL_PBZ365);
+  // - Triggers: per prudenza, la forma della label non è documentata.
   // Eventuali omonimi parziali inclusi dal filtro vengono scartati da selectResources (confronto sul nome esatto).
-  const prefixed = item.type === 'flow' || item.type === 'dataaction' || item.type === 'response';
+  const prefixed = item.type === 'flow' || item.type === 'dataaction' || item.type === 'response' || item.type === 'trigger';
   return prefixed ? `${CATALOG[item.type].tfType}::${loose}` : `${CATALOG[item.type].tfType}::^_?${loose}`;
 }
 

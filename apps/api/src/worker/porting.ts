@@ -5,6 +5,17 @@ import { GenesysClient, PermissionError } from '../genesys/client.js';
 import { CATALOG, WRAPUP_MAPPINGS_ID, listObjects } from '../genesys/catalog.js';
 import { lazyIdIndex } from '../genesys/dependencies.js';
 import { ID_TOKEN_G, idKey } from '../genesys/ids.js';
+
+/** Per ogni Trigger della configurazione, i GUID citati nelle condizioni (match_criteria) */
+function triggerCriteriaIds(cfg: TfJson): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const [label, attrs] of Object.entries(cfg.resource?.[CATALOG.trigger.tfType] ?? {})) {
+    const text = JSON.stringify((attrs as any)?.match_criteria ?? '');
+    const ids = new Set((text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []).map((g) => g.toLowerCase()));
+    if (ids.size) out.set(label, ids);
+  }
+  return out;
+}
 import { awsRegion } from '../genesys/regions.js';
 import type { PortItem } from '../genesys/types.js';
 import { and, eq, sql } from 'drizzle-orm';
@@ -280,6 +291,8 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   await rewriteAssetLinks(cfg, items, addresses, targetClient, log.info);
 
   // Configurazione: ID del target oppure riferimento alla risorsa creata nel job (mai sé stessa, mai i percorsi)
+  // Triggers: ID citati nelle condizioni (matchCriteria) prima della rimappatura
+  const triggerIdsBefore = triggerCriteriaIds(cfg);
   cfg = remapConfig(cfg, targetIds, sameJobRefs);
 
   // Campaigns e Queues: Site, Edge Group, email e numero scelti sul target (mai quelli del sorgente)
@@ -393,6 +406,23 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
       );
     }
   }
+  // Triggers: un ID nelle condizioni rimasto uguale dopo la rimappatura è un oggetto del sorgente non
+  // riconosciuto (es. un utente, che non si porta): sul target la condizione non scatterebbe mai
+  {
+    const after = triggerCriteriaIds(cfg);
+    const stale: string[] = [];
+    for (const [label, ids] of triggerIdsBefore) {
+      const left = [...ids].filter((id) => after.get(label)?.has(id));
+      if (left.length) stale.push(`Trigger "${cfg.resource?.[CATALOG.trigger.tfType]?.[label]?.name ?? label}" (${left.join(', ')})`);
+    }
+    if (stale.length) {
+      throw new Error(
+        `Condizioni dei Triggers con ID del sorgente non riconosciuti (es. utenti, che non si portano): ` +
+          `${stale.join('; ')}. Togliere o cambiare la condizione sul sorgente, oppure non portare il Trigger.`,
+      );
+    }
+  }
+
 
   await writeFile(cfgPath, JSON.stringify(cfg, null, 2));
   await rm(path.join(exportDir, 'terraform.tfstate'), { force: true });

@@ -33,7 +33,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 
 | Gruppo | Tipi |
 |---|---|
-| Architect | Flows, Schedules, Schedule Groups, User Prompts, Scripts, Data Tables, Emergency Groups |
+| Architect | Flows, Schedules, Schedule Groups, User Prompts, Scripts, Data Tables, Emergency Groups, Triggers |
 | Routing | Queues, ACD Skills, Wrap-up Codes, Languages, Skill Expression Groups |
 | Integrations | Integrations, Data Actions |
 | Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
@@ -73,6 +73,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 - **Analisi non più attuale**: se un oggetto da creare nel frattempo esiste sul target, o se nella configurazione resta
   l'ID di un oggetto del sorgente che non compare nell'analisi, la simulazione si ferma e chiede di rifare l'analisi.
 - **Roles e licenze del target**: il target può avere licenze diverse dal sorgente (es. sviluppo CX3, target CX1). In simulazione il worker legge i permessi disponibili sul target (`GET /api/v2/authorization/permissions`) e confronta ogni permesso `domain:entity:action` dei Roles portati (un `*` vale se il domain o l'entity esistono sul target). Un permesso non disponibile **ferma la simulazione** con l'elenco. Con l'opzione **"Porta senza i permessi non disponibili"** sulla riga del Role, quei permessi vengono tolti (una policy senza più action viene tolta intera): ogni rimozione compare nel log e negli avvisi del plan ("Da leggere prima di approvare"). Se in seguito il target ottiene le licenze, i permessi si aggiungono rifacendo il porting del Role.
+- **Triggers (Process Automation)**: si portano Topic, condizioni (`matchCriteria`), Data Format e tempi; il Workflow di destinazione è una dipendenza e viene portato o abbinato per nome come gli altri Flows. Gli ID citati nelle condizioni (es. Queue, Campaign) vengono rimappati sugli oggetti del target; un ID non riconosciuto, come un utente, ferma la simulazione, perché sul target la condizione non scatterebbe mai.
 - **Gli utenti non si portano mai**: né come membri od owner di Groups e Queues, né come assegnatari dei Roles. Un Role
   con una condizione su un utente specifico ferma la simulazione (l'ID dell'utente è diverso sul target).
 - **Dati delle Data Tables (opzionale)**: di default si porta solo la struttura. Con *Porta anche i dati (righe)* sulla riga
@@ -192,7 +193,7 @@ Client Credentials configurati nella pagina Ambienti (sezione successiva). Lo st
 
 Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
 
-- **Sorgente**: lettura su Architect (Flows, Dependency Tracking, User Prompts, Schedules), Routing (Queues, ACD Skills,
+- **Sorgente**: lettura su Architect (Flows, Dependency Tracking, User Prompts, Schedules), Process Automation (Triggers), Routing (Queues, ACD Skills,
   Wrap-up Codes, Languages), Integrations (Integrations e Data Actions), Outbound (Campaigns, Contact Lists, Rule Sets, ecc.),
   Web Deployments (Messenger Configurations e Deployments), Response Management (Libraries, Responses, Assets), più quanto richiesto da `tf_export`.
 - **Target**: gli stessi permessi in lettura più la scrittura sugli stessi oggetti (add/edit/publish dei flow),

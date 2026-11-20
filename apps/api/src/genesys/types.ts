@@ -39,6 +39,8 @@ export const OBJECT_TYPES = [
   'responselibrary',
   'response',
   'responseasset',
+  // Architect: Process Automation
+  'trigger',
   // Outbound, oggetto unico per org
   'wrapupmapping',
 ] as const;

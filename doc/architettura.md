@@ -147,7 +147,7 @@ Uno Script agente cita gli oggetti dell'org per **ID**, scritti nel suo JSON: ne
 
 | Area | Tipi |
 | --- | --- |
-| Architect | Flow, Schedule, Schedule Group, User Prompt, Script, Data Table, Emergency Group |
+| Architect | Flow, Schedule, Schedule Group, User Prompt, Script, Data Table, Emergency Group, Trigger |
 | Routing | Queue, ACD Skill, Wrap-up Code, Language, Skill Expression Group |
 | Integrations | Data Action, Integration |
 | Outbound | Campaign, Messaging Campaign, Campaign Sequence, Contact List, Contact List Filter, DNC List, Call Analysis Response Set, Rule Set, Digital Rule Set, Campaign Rule, Attempt Limit, Callable Time Set, File Specification Template |
@@ -173,11 +173,11 @@ Negli Scripts compaiono in pratica soprattutto **Data Actions** e **Queues**, a 
 
 ### Tipi supportati e regole di sicurezza
 
-Il catalogo comprende 38 tipi, raggruppati nel selettore dell'interfaccia. Per i tipi che non hanno un'analisi dedicata (Outbound, Messaging, Canned Responses) le dipendenze si ricavano cercando nel dettaglio dell'oggetto gli ID degli oggetti noti dell'org sorgente.
+Il catalogo comprende 39 tipi, raggruppati nel selettore dell'interfaccia. Per i tipi che non hanno un'analisi dedicata (Outbound, Messaging, Canned Responses) le dipendenze si ricavano cercando nel dettaglio dell'oggetto gli ID degli oggetti noti dell'org sorgente.
 
 | Gruppo | Tipi |
 | --- | --- |
-| Architect | Flows, Schedules, Schedule Groups, User Prompts, Scripts, Data Tables, Emergency Groups |
+| Architect | Flows, Schedules, Schedule Groups, User Prompts, Scripts, Data Tables, Emergency Groups, Triggers |
 | Routing | Queues, ACD Skills, Wrap-up Codes, Languages, Skill Expression Groups |
 | Integrations | Integrations, Data Actions |
 | Outbound | Campaigns, Messaging Campaigns, Campaign Sequences, Contact Lists, Contact List Filters, DNC Lists, Call Analysis Response Sets, Rule Sets, Digital Rule Sets, Campaign Rules, Attempt Limits, Callable Time Sets, File Specification Templates, Wrap-up Code Mappings |
@@ -192,6 +192,7 @@ Durante la simulazione, dopo la selezione delle risorse, il worker applica regol
 - **Membri delle Queues mai portati né toccati**: `members`, Groups, Teams e Skill Groups non vengono esportati. Sul target la Queue ha `ignore_members = true`, quindi i membri presenti restano; Groups, Teams e Skill Groups sono quelli del target se la Queue esiste già, nessuno se è nuova. Gli indirizzi di messaggistica in uscita (SMS, WhatsApp, Open Messaging) si scelgono sul target nell'analisi (proposto il valore attuale del target, vuoto = nessuno); senza una scelta restano quelli del target.
 - **Groups e Roles assegnati**: i membri dei Groups (`member_ids`, `owner_ids`) non vengono esportati e sul target restano quelli presenti. I Roles assegnati al Group sul sorgente, con le loro Divisions, vengono assegnati anche sul target con `genesyscloud_group_roles`, costruito dal worker dai grants del sorgente: Role riusato o portato nello stesso rilascio, Division abbinata per nome (`*` = tutte). Le assegnazioni del Group sul target vengono sostituite da quelle del sorgente; un Group senza Roles sul sorgente non tocca quelle del target. Un Role o una Division non disponibili sul target fermano la simulazione con l'elenco.
 - **Roles e licenze del target**: il target può avere licenze diverse dal sorgente (es. sviluppo CX3, target CX1). In simulazione il worker legge i permessi disponibili sul target (`GET /api/v2/authorization/permissions`) e confronta ogni permesso `domain:entity:action` dei Roles portati (un `*` vale se il domain o l'entity esistono sul target). Un permesso non disponibile **ferma la simulazione** con l'elenco. Con l'opzione **"Porta senza i permessi non disponibili"** sulla riga del Role, quei permessi vengono tolti (una policy senza più action viene tolta intera): ogni rimozione compare nel log e negli avvisi del plan ("Da leggere prima di approvare"). Se in seguito il target ottiene le licenze, i permessi si aggiungono rifacendo il porting del Role.
+- **Triggers (Process Automation)**: si portano Topic, condizioni (`matchCriteria`), Data Format e tempi; il Workflow di destinazione è una dipendenza e viene portato o abbinato per nome come gli altri Flows. Gli ID citati nelle condizioni (es. Queue, Campaign) vengono rimappati sugli oggetti del target; un ID non riconosciuto, come un utente, ferma la simulazione, perché sul target la condizione non scatterebbe mai.
 - **Gli utenti non si portano mai**: né come membri od owner di Groups e Queues, né come assegnatari dei Roles. Un Role con una condizione su un utente specifico ferma la simulazione, perché l'ID dell'utente è diverso sul target.
 - **Dati delle Data Tables (opzionale)**: di default si porta solo la struttura. Con *Porta anche i dati (righe)* le righe del sorgente diventano risorse `genesyscloud_architect_datatable_row`; quelle con la stessa chiave sul target vengono importate con blocchi `import` (un solo plan) e aggiornate, quelle presenti solo sul target restano invariate. I valori sono copiati così come sono, senza rimappare eventuali ID scritti nelle celle. Richiede Terraform 1.5 o successivo.
 - **URL delle Data Actions**: il provider 1.88.0 toglie dall'export `config_request.request_url_template` di tutte le Data Actions (voleva farlo solo per le Function Data Actions) e la creazione sul target fallisce. Il worker lo rilegge dal sorgente e lo rimette, proteggendo `${` e `%{` dei template; le Function Data Actions restano senza, perché lo imposta la piattaforma.

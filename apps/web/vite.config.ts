@@ -12,6 +12,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     // In sviluppo le chiamate /api vanno al backend: stesso origin, il cookie di sessione funziona senza CORS
-    proxy: { '/api': 'http://localhost:3000' },
+    // 127.0.0.1 e non localhost: con Node recenti localhost può diventare l'IPv6 ::1, dove l'API non ascolta
+    proxy: { '/api': 'http://127.0.0.1:3000' },
   },
 });

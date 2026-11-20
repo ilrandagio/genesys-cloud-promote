@@ -27,7 +27,13 @@ const schema = z.object({
   /// Chiave a 32 byte in base64 per cifrare i client secret degli ambienti
   ENCRYPTION_KEY: z.string(),
   /// URL pubblico dell'interfaccia: base del redirect URI OAuth (APP_URL/api/auth/callback)
-  APP_URL: z.string().default('http://localhost:5173'),
+  APP_URL: z.preprocess(
+    empty,
+    z
+      .string()
+      .regex(/^https?:\/\/[^/]+/, 'APP_URL deve essere un indirizzo completo, es. http://localhost:5173 o https://server/promote')
+      .default('http://localhost:5173'),
+  ),
 
   // ---- Login con Genesys Cloud (OAuth Authorization Code + PKCE) ----
   /// Dominio dell'org usata per il login, es. mypurecloud.de
@@ -51,7 +57,7 @@ const schema = z.object({
   /// Validità di un plan: oltre questo tempo va rifatto
   PLAN_TTL_HOURS: z.coerce.number().positive().default(24),
 
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ORIGIN: z.preprocess(empty, z.string().default('http://localhost:5173')),
   /// Cartella di lavoro per gli export Terraform
   WORK_DIR: z.string().default(path.join(tmpdir(), 'gc-promote')),
   TERRAFORM_BIN: z.string().default('terraform'),

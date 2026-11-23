@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CATALOG } from '../genesys/catalog.js';
-import type { PortItem } from '../genesys/types.js';
+import type { ObjectType, PortItem } from '../genesys/types.js';
 import { config } from '../config.js';
 import { includeFilter, type TfJson } from './exportConfig.js';
 import { tfOrThrow, type TfCreds } from './terraform.js';
@@ -13,6 +13,10 @@ import { tfOrThrow, type TfCreds } from './terraform.js';
  */
 export async function exportObjects(opts: {
   items: PortItem[];
+  /** Filtri aggiuntivi già pronti (tipo::regex), es. tutti gli oggetti di un tipo per il backup */
+  filters?: { type: ObjectType; filter: string }[];
+  /** Scrive anche lo state (ID degli oggetti esportati): serve al backup */
+  includeState?: boolean;
   runnerDir: string;
   exportDir: string;
   creds: TfCreds;
@@ -20,13 +24,14 @@ export async function exportObjects(opts: {
   line: (l: string) => void;
   info: (l: string) => void;
 }): Promise<{ cfg: TfJson; cfgPath: string }> {
-  const { items, runnerDir, exportDir, creds, orgName, line, info } = opts;
-  if (!items.length) throw new Error('Export senza oggetti: rifiutato (esporterebbe l\'intera org)');
+  const { items, filters = [], includeState = false, runnerDir, exportDir, creds, orgName, line, info } = opts;
+  if (!items.length && !filters.length) throw new Error('Export senza oggetti: rifiutato (esporterebbe l\'intera org)');
   for (const it of items) if (CATALOG[it.type].singleton) throw new Error(`${CATALOG[it.type].label}: oggetto unico per org, non esportabile`);
+  const exportedTypes = new Set<ObjectType>([...items.map((i) => i.type), ...filters.map((f) => f.type)]);
 
   // Esclusione solo per i tipi esportati: il provider rifiuta l'esclusione di attributi di tipi non esportati
   const excluded = [
-    ...(items.some((i) => i.type === 'queue')
+    ...(exportedTypes.has('queue')
       ? [
           'genesyscloud_routing_queue.members',
           'genesyscloud_routing_queue.groups',
@@ -34,8 +39,8 @@ export async function exportObjects(opts: {
           'genesyscloud_routing_queue.skill_groups',
         ]
       : []),
-    ...(items.some((i) => i.type === 'group') ? ['genesyscloud_group.member_ids', 'genesyscloud_group.owner_ids'] : []),
-    ...(items.some((i) => i.type === 'team') ? ['genesyscloud_team.member_ids'] : []),
+    ...(exportedTypes.has('group') ? ['genesyscloud_group.member_ids', 'genesyscloud_group.owner_ids'] : []),
+    ...(exportedTypes.has('team') ? ['genesyscloud_team.member_ids'] : []),
   ];
 
   await mkdir(runnerDir, { recursive: true });
@@ -52,13 +57,13 @@ export async function exportObjects(opts: {
           // dal provider per un URL ("unsupported protocol scheme c") quando scarica script e prompt
           directory: path.relative(runnerDir, exportDir).split(path.sep).join('/'),
           export_format: 'json',
-          include_state_file: false,
+          include_state_file: includeState,
           enable_dependency_resolution: false,
           // Il vecchio esportatore dei flow non scrive i file YAML: lascia il percorso come variabile da
           // compilare a mano (var.genesyscloud_flow_..._filepath) e il plan fallisce con "empty file path"
           use_legacy_architect_flow_exporter: false,
           split_files_by_resource: false,
-          include_filter_resources: items.map(includeFilter),
+          include_filter_resources: [...items.map(includeFilter), ...filters.map((f) => f.filter)],
           ...(excluded.length ? { exclude_attributes: excluded } : {}),
         },
       },

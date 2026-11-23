@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, Space, Table, Tag } from 'antd';
+import { Card, Space, Table, Tag, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { api, type JobSummary } from '../api/client';
 import { JobStatusTag, PlanStateTag } from '../components/StatusTag';
@@ -27,7 +27,9 @@ export default function JobsPage() {
             title: 'Tipo',
             dataIndex: 'mode',
             render: (m: string, j) =>
-              m === 'PLAN' ? (
+              m === 'BACKUP' ? (
+                <Tag color="cyan">Backup</Tag>
+              ) : m === 'PLAN' ? (
                 j.rollbackOfJobId ? <Tag color="orange">Ripristino</Tag> : <Tag>Simulazione</Tag>
               ) : (
                 <Tag color="red">Esecuzione</Tag>
@@ -37,7 +39,10 @@ export default function JobsPage() {
           {
             title: 'A',
             dataIndex: 'targetName',
-            render: (t: string, j) => (
+            render: (t: string, j) =>
+              j.mode === 'BACKUP' ? (
+                <Typography.Text type="secondary">archivio</Typography.Text>
+              ) : (
               <Space size={4}>
                 {t}
                 {j.targetRequireApproval && <Tag color="purple">protetto</Tag>}

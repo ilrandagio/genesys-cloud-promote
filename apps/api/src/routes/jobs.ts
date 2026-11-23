@@ -9,6 +9,9 @@ import { enqueuePorting } from '../lib/queue.js';
 import { getEnvironment, HttpError } from '../lib/repo.js';
 import { unpackPlanFiles } from '../worker/artifact.js';
 import { tarGz } from '../lib/tar.js';
+import { decryptFileStream } from '../lib/crypto.js';
+import { backupDir } from '../worker/backup.js';
+import path from 'node:path';
 import { requireAuth, sessionUser, type SessionUser } from './auth.js';
 import { buildReleaseNotes } from './releaseNotes.js';
 
@@ -72,6 +75,7 @@ const publicFields = {
   planFilesAvailable: sql<boolean>`${j.planFilesEncrypted} is not null`,
   rollbackOfJobId: j.rollbackOfJobId,
   rollbackAvailable: sql<boolean>`${j.rollbackEncrypted} is not null`,
+  backup: j.backup,
 };
 
 type PublicJob = Awaited<ReturnType<typeof selectJobs>>[number];
@@ -312,6 +316,61 @@ export async function jobRoutes(app: FastifyInstance) {
       .header('Content-Type', 'application/gzip')
       .header('Content-Disposition', `attachment; filename="${name}"`)
       .send(tarGz(unpackPlanFiles(plan.planFilesEncrypted), plan.createdAt));
+  });
+
+  /**
+   * Backup: export in sola lettura degli oggetti scelti di un ambiente. Per ogni tipo tutti gli oggetti
+   * (all) oppure quelli indicati. Nessuna scrittura sulle org, nessuna approvazione
+   */
+  app.post('/api/backups', async (req) => {
+    const body = z
+      .object({
+        envId: z.string(),
+        selection: z
+          .array(
+            z.object({
+              type: z.enum(OBJECT_TYPES),
+              all: z.boolean(),
+              objects: z.array(z.object({ id: z.string(), name: z.string(), subtype: z.string().optional() })).optional(),
+            }),
+          )
+          .min(1),
+      })
+      .parse(req.body);
+    const selection = body.selection.filter((s) => s.all || s.objects?.length);
+    if (!selection.length) throw new HttpError(400, 'Nessun oggetto scelto per il backup');
+    const env = await getEnvironment(body.envId);
+    const [job] = await db
+      .insert(j)
+      .values({
+        mode: 'BACKUP',
+        sourceEnvId: env.id,
+        targetEnvId: env.id,
+        items: [],
+        backup: { selection },
+        createdBy: sessionUser(req).sub,
+      })
+      .returning({ id: j.id });
+    await enqueuePorting(job.id);
+    req.log.info({ backup: job.id, env: env.name, by: sessionUser(req).sub }, 'Backup richiesto');
+    return job;
+  });
+
+  /** Archivio di un backup (.tar.gz), decifrato al volo */
+  app.get('/api/jobs/:id/backup', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [job] = await db.select().from(j).where(eq(j.id, id));
+    if (!job || job.mode !== 'BACKUP') throw new HttpError(404, 'Backup non trovato');
+    if (!job.backup?.file || job.backup.deleted) {
+      throw new HttpError(404, job.backup?.deleted ? 'Archivio cancellato dalla politica di conservazione' : 'Backup non completato');
+    }
+    const env = await getEnvironment(job.sourceEnvId);
+    const stream = await decryptFileStream(path.join(backupDir(), job.backup.file));
+    req.log.info({ backup: id, by: sessionUser(req).sub }, 'Download del backup');
+    return reply
+      .header('Content-Type', 'application/gzip')
+      .header('Content-Disposition', `attachment; filename="backup-${fileSafe(env.name)}-${stamp(job.createdAt)}.tar.gz"`)
+      .send(stream);
   });
 
   /** Note di rilascio di un'esecuzione (Markdown) */

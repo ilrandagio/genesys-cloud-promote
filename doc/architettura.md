@@ -256,6 +256,12 @@ Un'esecuzione fallita lascia il plan consumato: si rifà la simulazione, che rip
 
 **Note di rilascio.** Per ogni esecuzione, *Note di rilascio* genera un documento Markdown (`GET /api/jobs/:id/release-notes`): esito, chi ha simulato, approvato ed eseguito e quando, oggetti portati e del target usati, modifiche con l'indicazione di quelle applicate, avvisi letti all'approvazione e log completo.
 
+### Disaster Recovery e Backup
+
+**Disaster Recovery.** Il tab *Disaster Recovery* usa la stessa pagina del porting in una modalità dedicata, con scelte e analisi separate nella sessione. Al passo 2, invece dei singoli oggetti, si scelgono i tipi da portare: per ciascuno *Tutti* gli oggetti (esclusi Data Actions predefinite e Flows mai pubblicati, che non si esportano) oppure *Scegli*, con l'elenco degli oggetti del tipo. I preset *Configurazione minima* (Flows con Outcomes e Milestones, Queues, Skills, Languages, Wrap-up Codes, Schedules, Schedule Groups, Emergency Groups, Prompts, Data Tables, Integrations, Data Actions, Scripts), *Tutto* e *Nessuno* sono un punto di partenza da modificare. L'analisi trova anche le dipendenze dei tipi non scelti: quelle presenti sul target vengono usate, quelle mancanti portate, e si può cambiare al passo 3. Da lì in poi tutto è identico al porting: impostazioni del target, simulazione, approvazione, esecuzione, ripristino e note di rilascio. Con molti oggetti l'analisi può durare minuti: il proxy nginx del container attende fino a 900 secondi (eventuali proxy davanti, come il Koa, vanno allineati).
+
+**Backup.** Il tab *Backup* crea un job `BACKUP` in sola lettura: si sceglie l'ambiente e, con la stessa selezione per tipo, cosa salvare (tutti gli oggetti di un tipo diventano un filtro `tipo::.*` dell'export). Il worker esegue `genesyscloud_tf_export` con lo state (ID degli oggetti), senza membri di Queues, Groups e Work Teams, aggiunge `BACKUP.json` (ambiente, data, autore, versione del provider, scelta, conteggi), crea l'archivio `.tar.gz` e lo cifra in streaming con AES-256-GCM in `BACKUP_DIR` (con Docker il volume `backups`, condiviso da API e worker). Il download (`GET /api/jobs/:id/backup`) decifra al volo e fallisce se il file è stato alterato. Si conservano gli ultimi `BACKUP_KEEP` backup completati (predefinito 30): gli archivi più vecchi vengono cancellati e restano nello storico come *cancellati*. Il backup non passa da simulazione né approvazione perché non scrive sulle org.
+
 ### Modello dati e sicurezza dei dati
 
 Due tabelle reggono tutto; i dati sensibili sono cifrati e non escono mai dal server.
@@ -263,7 +269,7 @@ Due tabelle reggono tutto; i dati sensibili sono cifrati e non escono mai dal se
 | Tabella | Contenuto principale |
 | --- | --- |
 | `environments` | Short name, regione, client ID, secret cifrato, *solo sorgente*, *richiede approvazione* |
-| `jobs` | Simulazioni ed esecuzioni: oggetti e azioni scelti, archi dell'albero, log, output e riepilogo del piano, motivo di blocco, artefatto cifrato, file scaricabili cifrati, scadenza, approvatore, collegamento plan ↔ esecuzione, risorse scritte, stato precedente cifrato per il ripristino, collegamento ripristino ↔ esecuzione, autore, date |
+| `jobs` | Simulazioni ed esecuzioni: oggetti e azioni scelti, archi dell'albero, log, output e riepilogo del piano, motivo di blocco, artefatto cifrato, file scaricabili cifrati, scadenza, approvatore, collegamento plan ↔ esecuzione, risorse scritte, stato precedente cifrato per il ripristino, collegamento ripristino ↔ esecuzione, backup (scelta, archivio, conteggi), autore, date |
 
 Le migrazioni dello schema sono versionate (Drizzle) e applicate all'avvio dell'API.
 
@@ -272,6 +278,7 @@ Le migrazioni dello schema sono versionate (Drizzle) e applicate all'avvio dell'
 | Client secret degli ambienti | AES-256-GCM con `ENCRYPTION_KEY`; mai restituito dalle API |
 | Artefatto del plan (configurazione, state, variabili dell'export) | AES-256-GCM; mai restituito dalle API; cancellato dopo l'esecuzione o alla scadenza (controllo orario) |
 | File scaricabili del plan e stato precedente per il ripristino | AES-256-GCM; i file del plan si scaricano solo da utenti autenticati, senza state né tfvars; lo stato precedente non esce mai dal server |
+| Archivi dei backup | AES-256-GCM su disco (`BACKUP_DIR`), decifrati solo durante il download da utenti autenticati; conservati gli ultimi `BACKUP_KEEP` |
 | Cartelle di lavoro Terraform | Temporanee, cancellate a fine job (`KEEP_WORKDIR=1` solo per diagnosi) |
 | Credenziali passate a Terraform | Solo come variabili d'ambiente del processo, senza i segreti dell'app |
 | Sessione utente | JWT firmato con `JWT_SECRET`, cookie httpOnly, 8 ore |
@@ -387,7 +394,7 @@ app.use(proxy(/^\/promote\//, {
   changeOrigin: false,
   xfwd: true,
   rewrite: (p) => p.replace(/^\/promote/, ''),
-  proxyTimeout: 300000,              // l'analisi di org grandi può durare minuti
+  proxyTimeout: 900000,              // l'analisi di org grandi (Disaster Recovery) può durare minuti
 }));
 ```
 
@@ -403,7 +410,8 @@ sudo docker compose ps --format '{{.Service}}\t{{.Status}}\t{{.Ports}}'
 ```
 
 Esito atteso: tutti i servizi `Up` (`postgres` anche `healthy`), con `web` su `127.0.0.1:8090->80/tcp`. I container
-ripartono da soli dopo un riavvio del server.
+ripartono da soli dopo un riavvio del server. Gli archivi dei backup stanno nel volume `backups`; il backup del
+volume `pgdata` (passo 9) non li include.
 
 **7. Verifiche**
 

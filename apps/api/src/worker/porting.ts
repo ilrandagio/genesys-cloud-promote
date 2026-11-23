@@ -140,6 +140,7 @@ import {
   unexportedFiles,
   type TfJson,
 } from './exportConfig.js';
+import { runBackup } from './backup.js';
 import { exportObjects } from './exporter.js';
 import {
   createdResources,
@@ -183,7 +184,7 @@ type SetJob = (data: Partial<typeof schema.jobs.$inferInsert>) => Promise<unknow
 const PLAN_FILE = 'promote.tfplan';
 const CHECK_FILE = 'drift-check.tfplan';
 
-const credsOf = (env: Environment): TfCreds => ({
+export const credsOf = (env: Environment): TfCreds => ({
   ...new GenesysClient(env).credentials(),
   region: awsRegion(env.region),
 });
@@ -207,7 +208,8 @@ export async function runPortingJob(jobId: string) {
   const workDir = path.join(config.WORK_DIR, jobId);
 
   try {
-    if (job.mode === 'PLAN' && job.rollbackOfJobId) await runRollbackPlan(job, workDir, log, setJob);
+    if (job.mode === 'BACKUP') await runBackup(job, workDir, log, setJob);
+    else if (job.mode === 'PLAN' && job.rollbackOfJobId) await runRollbackPlan(job, workDir, log, setJob);
     else if (job.mode === 'PLAN') await runPlan(job, workDir, log, setJob);
     else await runApply(job, workDir, log, setJob);
     log.info('Completato');

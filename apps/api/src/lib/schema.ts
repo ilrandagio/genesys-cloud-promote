@@ -37,7 +37,20 @@ export const environments = pgTable('environments', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const jobMode = pgEnum('job_mode', ['PLAN', 'APPLY']);
+/** Backup: cosa esportare e risultato */
+export interface BackupInfo {
+  selection: { type: string; all: boolean; objects?: { id: string; name: string; subtype?: string }[] }[];
+  /** Nome del file cifrato in BACKUP_DIR (assente finché il backup non è completato) */
+  file?: string;
+  /** Dimensione dell'archivio non cifrato */
+  size?: number;
+  /** Risorse esportate per tipo Terraform */
+  counts?: Record<string, number>;
+  /** Archivio cancellato dalla politica di conservazione */
+  deleted?: boolean;
+}
+
+export const jobMode = pgEnum('job_mode', ['PLAN', 'APPLY', 'BACKUP']);
 export const jobStatus = pgEnum('job_status', ['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED']);
 
 /** Un'esecuzione di porting: PLAN = simulazione, APPLY = scrittura sul target. Fa anche da audit. */
@@ -90,6 +103,8 @@ export const jobs = pgTable('jobs', {
    * servono al plan di ripristino
    */
   rollbackEncrypted: text('rollback_encrypted'),
+  /** Backup: oggetti scelti, archivio cifrato su disco, dimensione e conteggi per tipo */
+  backup: jsonb('backup').$type<BackupInfo>(),
 }, (t) => [
   // Garanzia a livello di database: un plan può generare al massimo un porting
   uniqueIndex('jobs_plan_job_id_unique').on(t.planJobId),

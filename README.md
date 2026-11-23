@@ -34,6 +34,15 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
      oggetti portati, modifiche applicate, avvisi e log.
 4. **Storico**: simulazioni ed esecuzioni con stato del plan, modifiche, chi ha simulato, approvato ed eseguito,
    risorse scritte, log e output (audit).
+5. **Disaster Recovery** (tab dedicato): porta la configurazione, anche solo minima, da un ambiente a un altro.
+   Si scelgono i tipi (preset *Configurazione minima*, *Tutto*, *Nessuno*) e per ciascuno tutti gli oggetti oppure solo
+   alcuni (*Scegli*); poi stessa analisi delle dipendenze, simulazione, approvazione, esecuzione e ripristino del
+   porting. Scelte e analisi sono separate da quelle del tab Porting.
+6. **Backup** (tab dedicato): export in sola lettura della configurazione scelta di un ambiente (stessa selezione per
+   tipo), con file dei Flows, degli Scripts, audio dei Prompts, state con gli ID e `BACKUP.json`. L'archivio viene
+   salvato cifrato sul server (`BACKUP_DIR`, volume `backups` con Docker) e si scarica dalla pagina del backup; si
+   conservano gli ultimi `BACKUP_KEEP` (predefinito 30). Nessuna simulazione né approvazione: non scrive sulle org.
+7. **Tema chiaro, scuro o come il sistema**, dal pulsante nell'intestazione; la scelta resta salvata nel browser.
 
 ## Tipi supportati
 

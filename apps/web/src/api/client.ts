@@ -193,7 +193,7 @@ export interface PlanState {
 
 export interface JobSummary {
   id: string;
-  mode: 'PLAN' | 'APPLY';
+  mode: 'PLAN' | 'APPLY' | 'BACKUP';
   status: JobStatus;
   createdBy: string;
   createdAt: string;
@@ -215,7 +215,17 @@ export interface JobSummary {
   rollbackOfJobId?: string | null;
   /** Esecuzione con stato precedente salvato: si può ripristinare */
   rollbackAvailable?: boolean;
+  /** Backup: scelta, archivio e conteggi */
+  backup?: BackupInfo | null;
   plan?: PlanState;
+}
+
+export interface BackupInfo {
+  selection: { type: ObjectType; all: boolean; objects?: { id: string; name: string; subtype?: string }[] }[];
+  file?: string;
+  size?: number;
+  counts?: Record<string, number>;
+  deleted?: boolean;
 }
 
 export interface JobDetail extends JobSummary {

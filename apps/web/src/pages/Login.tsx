@@ -6,7 +6,7 @@ export default function LoginPage() {
   const error = new URLSearchParams(window.location.search).get('loginError');
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', }}>
       <Card style={{ width: 400 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>

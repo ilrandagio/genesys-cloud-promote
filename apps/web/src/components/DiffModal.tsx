@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Modal, Space, Spin, Switch, Tag, Typography } from 'antd';
+import { Alert, Modal, Space, Spin, Switch, Tag, Typography, theme } from 'antd';
 import { diffLines } from 'diff';
 import { useMemo, useState } from 'react';
 import { api, type ObjectType } from '../api/client';
@@ -52,15 +52,18 @@ function buildLines(a: string, b: string, all: boolean): Line[] {
   return out;
 }
 
-const STYLE: Record<'same' | 'del' | 'add', { bg?: string; sign: string; color?: string }> = {
-  same: { sign: ' ' },
-  del: { bg: '#fff1f0', sign: '-', color: '#a8071a' },
-  add: { bg: '#f6ffed', sign: '+', color: '#135200' },
-};
+const SIGN: Record<'same' | 'del' | 'add', string> = { same: ' ', del: '-', add: '+' };
 
 /** Differenze tra l'oggetto sul sorgente e sul target, come le vede l'analisi */
 export default function DiffModal({ open, onClose, name, type, sourceEnvId, targetEnvId, sourceId, targetId }: Props) {
   const [all, setAll] = useState(false);
+  const { token } = theme.useToken();
+  // Colori dal tema: leggibili sia in chiaro sia in scuro
+  const STYLE: Record<'same' | 'del' | 'add', { bg?: string; color?: string }> = {
+    same: {},
+    del: { bg: token.colorErrorBg, color: token.colorErrorText },
+    add: { bg: token.colorSuccessBg, color: token.colorSuccessText },
+  };
   const q = useQuery({
     queryKey: ['compare', sourceEnvId, targetEnvId, type, sourceId, targetId],
     queryFn: () =>
@@ -109,18 +112,18 @@ export default function DiffModal({ open, onClose, name, type, sourceEnvId, targ
                 overflow: 'auto',
                 fontSize: 12,
                 lineHeight: 1.5,
-                border: '1px solid #f0f0f0',
+                border: `1px solid ${token.colorBorderSecondary}`,
                 borderRadius: 6,
               }}
             >
               {lines.map((l, i) =>
                 l.kind === 'gap' ? (
-                  <div key={i} style={{ background: '#fafafa', color: '#8c8c8c', padding: '0 8px' }}>
+                  <div key={i} style={{ background: token.colorFillQuaternary, color: token.colorTextTertiary, padding: '0 8px' }}>
                     ⋯ {l.count} righe uguali
                   </div>
                 ) : (
                   <div key={i} style={{ background: STYLE[l.kind].bg, color: STYLE[l.kind].color, padding: '0 8px' }}>
-                    {STYLE[l.kind].sign} {l.text}
+                    {SIGN[l.kind]} {l.text}
                   </div>
                 ),
               )}

@@ -84,12 +84,12 @@ export default function JobView({
             <b>{summary?.add ?? 0}</b> da creare, <b>{summary?.change ?? 0}</b> da aggiornare
             {summary?.replace ? (
               <>
-                , <b style={{ color: '#cf1322' }}>{summary.replace} da ricreare</b> (nuovo ID: vedi gli avvisi)
+                , <Typography.Text strong type="danger">{summary.replace} da ricreare</Typography.Text> (nuovo ID: vedi gli avvisi)
               </>
             ) : null}
             {summary?.destroy ? (
               <>
-                , <b style={{ color: '#cf1322' }}>{summary.destroy} da cancellare</b> (oggetti creati dall'esecuzione che si
+                , <Typography.Text strong type="danger">{summary.destroy} da cancellare</Typography.Text> (oggetti creati dall'esecuzione che si
                 annulla)
               </>
             ) : null}
@@ -147,6 +147,18 @@ export default function JobView({
           </Button>
         </Tooltip>
       )}
+      {j.mode === 'BACKUP' && j.status === 'SUCCEEDED' && (
+        <Tooltip title={j.backup?.deleted ? 'Archivio cancellato dalla politica di conservazione' : 'Archivio .tar.gz: configurazione Terraform, file dei flow, script e prompt, state con gli ID, BACKUP.json'}>
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            disabled={!j.backup?.file || j.backup.deleted}
+            href={appUrl(`/api/jobs/${j.id}/backup`)}
+          >
+            Scarica il backup
+          </Button>
+        </Tooltip>
+      )}
       {j.mode === 'APPLY' && j.rollbackAvailable && (
         <Button icon={<RollbackOutlined />} loading={busy} onClick={rollback}>
           Ripristina lo stato precedente
@@ -199,7 +211,13 @@ export default function JobView({
         size={compact ? 'small' : 'default'}
         title={
           <Space>
-            {j.mode === 'PLAN' ? (j.rollbackOfJobId ? 'Simulazione di ripristino' : 'Simulazione (plan)') : 'Esecuzione'}
+            {j.mode === 'BACKUP'
+              ? 'Backup'
+              : j.mode === 'PLAN'
+                ? j.rollbackOfJobId
+                  ? 'Simulazione di ripristino'
+                  : 'Simulazione (plan)'
+                : 'Esecuzione'}
             {p ? <PlanStateTag state={p.state} /> : <JobStatusTag status={j.status} />}
           </Space>
         }
@@ -211,14 +229,33 @@ export default function JobView({
         }
       >
         <Descriptions column={compact ? 2 : 3} size="small">
-          <Descriptions.Item label="Da → A">
-            {j.sourceName} → {j.targetName}
-            {j.targetRequireApproval && (
-              <Tag color="purple" style={{ marginLeft: 8 }}>
-                protetto
-              </Tag>
-            )}
-          </Descriptions.Item>
+          {j.mode === 'BACKUP' ? (
+            <Descriptions.Item label="Ambiente">{j.sourceName}</Descriptions.Item>
+          ) : (
+            <Descriptions.Item label="Da → A">
+              {j.sourceName} → {j.targetName}
+              {j.targetRequireApproval && (
+                <Tag color="purple" style={{ marginLeft: 8 }}>
+                  protetto
+                </Tag>
+              )}
+            </Descriptions.Item>
+          )}
+          {j.mode === 'BACKUP' && j.backup && (
+            <>
+              <Descriptions.Item label="Contenuto">
+                {j.backup.selection.length} tipi
+                {j.backup.counts ? `, ${Object.values(j.backup.counts).reduce((a, b) => a + b, 0)} oggetti` : ''}
+              </Descriptions.Item>
+              <Descriptions.Item label="Archivio">
+                {j.backup.deleted
+                  ? 'cancellato (conservazione)'
+                  : j.backup.size
+                    ? `${(j.backup.size / 1024 / 1024).toFixed(1)} MB, cifrato`
+                    : '—'}
+              </Descriptions.Item>
+            </>
+          )}
           <Descriptions.Item label={j.mode === 'PLAN' ? 'Creato da' : 'Eseguito da'}>{j.createdBy}</Descriptions.Item>
           <Descriptions.Item label="Avviato">{fmt(j.createdAt)}</Descriptions.Item>
           <Descriptions.Item label="Terminato">{fmt(j.finishedAt)}</Descriptions.Item>
@@ -275,6 +312,22 @@ export default function JobView({
         )}
       </Card>
 
+      {j.mode === 'BACKUP' && j.backup?.counts && (
+        <Card size={compact ? 'small' : 'default'} title="Oggetti salvati">
+          <Table
+            size="small"
+            pagination={false}
+            rowKey="type"
+            dataSource={Object.entries(j.backup.counts)
+              .map(([type, count]) => ({ type, count }))
+              .sort((a, b) => a.type.localeCompare(b.type))}
+            columns={[
+              { title: 'Risorsa Terraform', dataIndex: 'type', render: (t: string) => <code>{t}</code> },
+              { title: 'Oggetti', dataIndex: 'count', width: 120 },
+            ]}
+          />
+        </Card>
+      )}
       {summary && (
         <Card size={compact ? 'small' : 'default'} title="Modifiche sul target">
           <Space wrap style={{ marginBottom: 12 }}>

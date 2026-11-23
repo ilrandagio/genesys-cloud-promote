@@ -26,6 +26,9 @@ services:
       REDIS_URL: redis://redis:6379
       APP_URL: ${APP_URL:-http://localhost:8080}
       CORS_ORIGIN: ${APP_URL:-http://localhost:8080}
+      BACKUP_DIR: /data/backups
+    volumes:
+      - backups:/data/backups
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
@@ -38,8 +41,10 @@ services:
     environment:
       DATABASE_URL: postgres://gcp:gcp@postgres:5432/gcp
       REDIS_URL: redis://redis:6379
+      BACKUP_DIR: /data/backups
     volumes:
       - tfplugins:/var/cache/terraform-plugins
+      - backups:/data/backups
     depends_on:
       - api
 
@@ -58,3 +63,4 @@ services:
 volumes:
   pgdata:
   tfplugins:
+  backups:

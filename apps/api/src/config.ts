@@ -23,6 +23,10 @@ const schema = z.object({
   /// Se assente: coda interna al processo dell'API (niente worker separato)
   REDIS_URL: z.preprocess(empty, z.string().optional()),
   DATA_DIR: z.string().default(path.resolve(here, '../../../data')),
+  /// Archivi dei backup (cifrati). Con Docker: volume condiviso da API e worker
+  BACKUP_DIR: z.preprocess(empty, z.string().optional()),
+  /// Backup completati da conservare: i più vecchi vengono cancellati
+  BACKUP_KEEP: z.coerce.number().int().min(1).default(30),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET deve avere almeno 32 caratteri (npm run setup lo genera)'),
   /// Chiave a 32 byte in base64 per cifrare i client secret degli ambienti
   ENCRYPTION_KEY: z.string(),

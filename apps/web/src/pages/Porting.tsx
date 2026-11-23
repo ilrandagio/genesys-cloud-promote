@@ -38,6 +38,7 @@ import JobView from '../components/JobView';
 import DiffModal from '../components/DiffModal';
 import TargetSettingsEditor, { missingSettings, proposeSettings, settingsValid } from '../components/TargetSettingsEditor';
 import { flowTypeLabel, TargetStatusTag, typeLabel } from '../components/StatusTag';
+import TypeObjectSelection, { type TypeSelection } from '../components/TypeObjectSelection';
 import { mapCodec, useSessionState } from '../hooks/useSessionState';
 
 const keyOf = (o: { type: string; id: string }) => `${o.type}:${o.id}`;
@@ -110,34 +111,45 @@ function flatRows(rows: TreeRow[], keep: (r: TreeRow) => boolean): TreeRow[] {
   return [...out.values()];
 }
 
-export default function PortingPage() {
+/**
+ * Porting (mode "porting"): si scelgono singoli oggetti e se ne analizzano le dipendenze.
+ * Disaster Recovery (mode "dr"): si scelgono tipi interi (o parte dei loro oggetti) per portare la
+ * configurazione, anche minima, da un ambiente a un altro; poi stessa analisi, simulazione e approvazione.
+ * Le due pagine hanno scelte e analisi separate nella sessione.
+ */
+export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | 'dr' }) {
+  const dr = mode === 'dr';
+  const ns = dr ? 'dr.' : '';
   const { message } = App.useApp();
   const navigate = useNavigate();
 
   // Selezione, analisi e azioni restano salvate nella sessione: cambiare pagina o aprire il plan non le perde
-  const [sourceId, setSourceId] = useSessionState<string | undefined>('sourceId', undefined);
-  const [targetId, setTargetId] = useSessionState<string | undefined>('targetId', undefined);
-  const [type, setType] = useSessionState<ObjectType>('type', 'flow');
+  const [sourceId, setSourceId] = useSessionState<string | undefined>(ns + 'sourceId', undefined);
+  const [targetId, setTargetId] = useSessionState<string | undefined>(ns + 'targetId', undefined);
+  const [type, setType] = useSessionState<ObjectType>(ns + 'type', 'flow');
   const [search, setSearch] = useState('');
   /** Filtro per divisione (valori = nomi; NO_DIVISION = oggetti senza divisione) */
   const [divisionFilter, setDivisionFilter] = useState<string[]>([]);
-  const [selected, setSelected] = useSessionState<Map<string, GcObject>>('selected', new Map(), mapCodec());
-  const [trees, setTrees] = useSessionState<DependencyNode[] | undefined>('trees', undefined);
-  const [warnings, setWarnings] = useSessionState<string[]>('warnings', []);
-  const [actions, setActions] = useSessionState<Map<string, PortAction>>('actions', new Map(), mapCodec());
-  const [targetSettings, setTargetSettings] = useSessionState<Map<string, TargetSettings>>('targetSettings', new Map(), mapCodec());
-  const [includeDivisions, setIncludeDivisions] = useSessionState('includeDivisions', false);
-  const [onlySelected, setOnlySelected] = useSessionState('onlySelected', false);
+  const [selected, setSelected] = useSessionState<Map<string, GcObject>>(ns + 'selected', new Map(), mapCodec());
+  const [trees, setTrees] = useSessionState<DependencyNode[] | undefined>(ns + 'trees', undefined);
+  const [warnings, setWarnings] = useSessionState<string[]>(ns + 'warnings', []);
+  const [actions, setActions] = useSessionState<Map<string, PortAction>>(ns + 'actions', new Map(), mapCodec());
+  const [targetSettings, setTargetSettings] = useSessionState<Map<string, TargetSettings>>(ns + 'targetSettings', new Map(), mapCodec());
+  const [includeDivisions, setIncludeDivisions] = useSessionState(ns + 'includeDivisions', false);
+  const [onlySelected, setOnlySelected] = useSessionState(ns + 'onlySelected', false);
   /** Data Tables per cui portare anche le righe (opzionale, di default solo la struttura) */
-  const [datatableRows, setDatatableRows] = useSessionState<Map<string, boolean>>('datatableRows', new Map(), mapCodec());
+  const [datatableRows, setDatatableRows] = useSessionState<Map<string, boolean>>(ns + 'datatableRows', new Map(), mapCodec());
   const [diffNode, setDiffNode] = useState<DependencyNode>();
-  const [allowReplace, setAllowReplace] = useSessionState<Map<string, boolean>>('allowReplace', new Map(), mapCodec());
-  const [dropPermissions, setDropPermissions] = useSessionState<Map<string, boolean>>('dropPermissions', new Map(), mapCodec());
-  const [actionFilter, setActionFilter] = useSessionState<PortAction | 'all'>('actionFilter', 'all');
+  const [allowReplace, setAllowReplace] = useSessionState<Map<string, boolean>>(ns + 'allowReplace', new Map(), mapCodec());
+  const [dropPermissions, setDropPermissions] = useSessionState<Map<string, boolean>>(ns + 'dropPermissions', new Map(), mapCodec());
+  const [actionFilter, setActionFilter] = useSessionState<PortAction | 'all'>(ns + 'actionFilter', 'all');
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
-  const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>('plan', undefined);
+  const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>(ns + 'plan', undefined);
   const [planOpen, setPlanOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  /** Disaster Recovery: tipi scelti (tutti gli oggetti o solo alcuni) e oggetti risultanti */
+  const [drSelection, setDrSelection] = useSessionState<TypeSelection>(ns + 'drSelection', {});
+  const [drResolved, setDrResolved] = useState<{ objects: GcObject[]; loading: ObjectType[] }>({ objects: [], loading: [] });
   const [submitting, setSubmitting] = useState(false);
 
   const envs = useQuery({ queryKey: ['environments'], queryFn: () => api<Environment[]>('/api/environments') });
@@ -174,7 +186,7 @@ export default function PortingPage() {
 
   const step = !sourceId || !targetId ? 0 : !trees ? 1 : 2;
 
-  const analyze = async () => {
+  const analyze = async (objs: GcObject[] = [...selected.values()]) => {
     setAnalyzing(true);
     try {
       const res = await api<{ trees: DependencyNode[]; warnings?: string[] }>('/api/analyze', {
@@ -182,7 +194,7 @@ export default function PortingPage() {
         body: {
           sourceEnvId: sourceId,
           targetEnvId: targetId,
-          objects: [...selected.values()].map(({ type, id, name, subtype }) => ({ type, id, name, subtype })),
+          objects: objs.map(({ type, id, name, subtype }) => ({ type, id, name, subtype })),
           includeDivisions,
         },
       });
@@ -372,7 +384,7 @@ export default function PortingPage() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Steps
         current={step}
-        items={[{ title: 'Ambienti' }, { title: 'Oggetti da portare' }, { title: 'Dipendenze e porting' }]}
+        items={[{ title: 'Ambienti' }, { title: dr ? 'Tipi e oggetti da portare' : 'Oggetti da portare' }, { title: 'Dipendenze e porting' }]}
       />
 
       <Card title="1. Ambienti">
@@ -419,7 +431,56 @@ export default function PortingPage() {
         </Space>
       </Card>
 
-      {sourceId && targetId && (
+      {dr && sourceId && targetId && (
+        <Card
+          title="2. Cosa portare"
+          extra={
+            <Space size="large">
+              <Tooltip title="Mostra la divisione di ogni oggetto come dipendenza, con la scelta se portarla o usare quella del target. Da spento, le divisioni vengono comunque abbinate per nome.">
+                <Space size={6}>
+                  <Switch
+                    size="small"
+                    checked={includeDivisions}
+                    onChange={(v) => {
+                      setIncludeDivisions(v);
+                      resetAnalysis();
+                    }}
+                  />
+                  <Typography.Text>Includi divisioni</Typography.Text>
+                </Space>
+              </Tooltip>
+              <Button
+                type="primary"
+                icon={<BranchesOutlined />}
+                disabled={!drResolved.objects.length || drResolved.loading.length > 0}
+                loading={analyzing}
+                onClick={() => analyze(drResolved.objects)}
+              >
+                Analizza dipendenze
+              </Button>
+            </Space>
+          }
+        >
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="Porting della configurazione verso l'ambiente di Disaster Recovery"
+            description="Scegli i tipi da portare: per ciascuno tutti gli oggetti oppure solo alcuni (Scegli). Per una configurazione minima parti dal preset e togli o aggiungi tipi. L'analisi trova le dipendenze anche dei tipi non scelti: quelle già presenti sul target vengono usate, quelle mancanti portate (si può cambiare nel passo 3). Poi simulazione, approvazione ed esecuzione come per ogni rilascio. Con molti oggetti l'analisi può richiedere alcuni minuti."
+          />
+          <TypeObjectSelection
+            envId={sourceId}
+            value={drSelection}
+            onChange={(v) => {
+              setDrSelection(v);
+              resetAnalysis();
+            }}
+            onResolved={setDrResolved}
+          />
+        </Card>
+      )}
+
+      {!dr && sourceId && targetId && (
         <Card
           title="2. Oggetti sul sorgente"
           extra={
@@ -449,7 +510,7 @@ export default function PortingPage() {
                 icon={<BranchesOutlined />}
                 disabled={!selected.size}
                 loading={analyzing}
-                onClick={analyze}
+                onClick={() => analyze()}
               >
                 Analizza dipendenze
               </Button>

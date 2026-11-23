@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-c
 WORKDIR /app
 ENV NODE_ENV=production \
     TF_PLUGIN_CACHE_DIR=/var/cache/terraform-plugins
-RUN mkdir -p $TF_PLUGIN_CACHE_DIR /tmp/gc-promote && chown -R node:node $TF_PLUGIN_CACHE_DIR /tmp/gc-promote
+RUN mkdir -p $TF_PLUGIN_CACHE_DIR /tmp/gc-promote /data/backups && chown -R node:node $TF_PLUGIN_CACHE_DIR /tmp/gc-promote /data/backups
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/drizzle apps/api/drizzle

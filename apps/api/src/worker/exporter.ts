@@ -72,8 +72,12 @@ export async function exportObjects(opts: {
   await tfOrThrow(['init', '-no-color', '-input=false'], runnerDir, creds, line);
   await tfOrThrow(['apply', '-no-color', '-auto-approve', '-input=false'], runnerDir, creds, line);
 
+  // Nessun file: nessun oggetto trovato dal filtro. Chi chiama segnala quali oggetti mancano
   const exportFile = (await readdir(exportDir)).find((f) => f.endsWith('.tf.json'));
-  if (!exportFile) throw new Error('Export senza file .tf.json');
+  if (!exportFile) {
+    info(`L'export da ${orgName} non contiene oggetti`);
+    return { cfg: { resource: {} }, cfgPath: path.join(exportDir, 'genesyscloud.tf.json') };
+  }
   const cfgPath = path.join(exportDir, exportFile);
   return { cfg: JSON.parse(await readFile(cfgPath, 'utf8')) as TfJson, cfgPath };
 }

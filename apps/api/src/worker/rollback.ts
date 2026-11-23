@@ -183,11 +183,16 @@ export async function takeRollbackSnapshot(opts: {
       if (a.integrationId) match.set(it, { integration_id: a.integrationId });
     }
     const addresses = selectResources(cfg, toExport, match);
-    const missing = toExport.filter((i) => !addresses.has(i));
-    if (missing.length) {
-      throw new Error(
-        `Impossibile salvare lo stato attuale di: ${missing.map((m) => `${CATALOG[m.type].label} "${m.name}"`).join(', ')}`,
+    // Oggetti che l'export del target non restituisce (per esempio uno Script non pubblicato): il rilascio
+    // prosegue, ma per loro il ripristino non sarà disponibile, e lo si dice chiaramente
+    for (const m of toExport.filter((i) => !addresses.has(i))) {
+      const what = `${CATALOG[m.type].label} "${m.name}"`;
+      snapshot.notRestorable.push(
+        `${what}: l'export del target non lo restituisce` +
+          (m.type === 'script' ? ' (di solito perché sul target non è pubblicato)' : '') +
+          ', quindi non si può riportare com\'era prima',
       );
+      info(`ATTENZIONE: stato attuale di ${what} non salvato: per questo oggetto il ripristino non sarà disponibile`);
     }
     // Solo le risorse da ripristinare; i riferimenti alle altre diventano ID letterali (stesso target)
     const kept = new Set(addresses.values());

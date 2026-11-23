@@ -36,15 +36,24 @@ export function summarize(plan: PlanJson): PlanSummary {
  * Cancellazioni e ricreazioni sono escluse per principio: ricreare un oggetto ne cambia l'ID
  * e rompe tutto ciò che lo referenzia (flow, script, code...).
  */
-export function blockReason(summary: PlanSummary, allowedDeletes?: Set<string>): string | undefined {
+export function blockReason(
+  summary: PlanSummary,
+  allowedDeletes?: Set<string>,
+  allowedReplaces?: Set<string>,
+): string | undefined {
   // Ammesse solo cancellazioni pure di risorse indicate (ripristino: oggetti creati dal rilascio annullato)
-  const bad = summary.changes.filter(
-    (c) => c.actions.includes('delete') && (c.actions.includes('create') || !allowedDeletes?.has(c.address)),
-  );
+  // e ricreazioni di risorse per cui l'utente l'ha consentita esplicitamente
+  const bad = summary.changes.filter((c) => {
+    if (!c.actions.includes('delete')) return false;
+    if (c.actions.includes('create')) return !allowedReplaces?.has(c.address);
+    return !allowedDeletes?.has(c.address);
+  });
   if (!bad.length) return undefined;
   return (
     `Il piano cancella o ricrea ${bad.length} oggetti (${bad.map((c) => c.address).join(', ')}). ` +
-    `Ricreare un oggetto ne cambia l'ID e rompe ciò che lo usa: plan non eseguibile.`
+    `Ricreare un oggetto ne cambia l'ID e rompe ciò che lo usa: plan non eseguibile. ` +
+    `Per una Data Action il cui contract è cambiato si può consentire la ricreazione nell'analisi ` +
+    `("Consenti la ricreazione") e rifare la simulazione.`
   );
 }
 

@@ -164,6 +164,7 @@ export interface PortItem {
   targetSettings?: TargetSettings;
   includeRows?: boolean;
   dropUnavailablePermissions?: boolean;
+  allowReplace?: boolean;
 }
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';

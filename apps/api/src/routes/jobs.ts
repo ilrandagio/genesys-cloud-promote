@@ -26,6 +26,7 @@ const itemSchema = z.object({
   targetId: z.string().optional(),
   includeRows: z.boolean().optional(),
   dropUnavailablePermissions: z.boolean().optional(),
+  allowReplace: z.boolean().optional(),
   targetSettings: z
     .object({
       siteId: z.string().optional(),

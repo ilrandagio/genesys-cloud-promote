@@ -218,4 +218,9 @@ export interface PortItem extends GcObjectRef {
   includeRows?: boolean;
   /** Solo Roles portati: togli i permessi che il target non ha (licenze diverse) invece di fermarsi */
   dropUnavailablePermissions?: boolean;
+  /**
+   * Solo Data Actions portate su una esistente: ammessa la ricreazione (cancella e crea, nuovo ID) quando il
+   * provider non può aggiornarla, per esempio se cambia il contract. Senza, un piano che la ricrea è bloccato
+   */
+  allowReplace?: boolean;
 }

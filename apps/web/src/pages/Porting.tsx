@@ -131,6 +131,7 @@ export default function PortingPage() {
   /** Data Tables per cui portare anche le righe (opzionale, di default solo la struttura) */
   const [datatableRows, setDatatableRows] = useSessionState<Map<string, boolean>>('datatableRows', new Map(), mapCodec());
   const [diffNode, setDiffNode] = useState<DependencyNode>();
+  const [allowReplace, setAllowReplace] = useSessionState<Map<string, boolean>>('allowReplace', new Map(), mapCodec());
   const [dropPermissions, setDropPermissions] = useSessionState<Map<string, boolean>>('dropPermissions', new Map(), mapCodec());
   const [actionFilter, setActionFilter] = useSessionState<PortAction | 'all'>('actionFilter', 'all');
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
@@ -273,13 +274,14 @@ export default function PortingPage() {
           ...(n.settings ? { targetSettings: targetSettings.get(keyOf(n)) ?? {} } : {}),
           ...(n.type === 'datatable' && datatableRows.get(keyOf(n)) ? { includeRows: true } : {}),
           ...(n.type === 'role' && dropPermissions.get(keyOf(n)) ? { dropUnavailablePermissions: true } : {}),
+          ...(n.type === 'dataaction' && n.target?.id && allowReplace.get(keyOf(n)) ? { allowReplace: true } : {}),
         });
       }
       n.children.forEach(walk);
     };
     trees?.forEach(walk);
     return [...out.values()];
-  }, [trees, actions, targetSettings, datatableRows, dropPermissions]);
+  }, [trees, actions, targetSettings, datatableRows, dropPermissions, allowReplace]);
 
   /** Archi dell'albero ("from" usa "to"): il server li usa per l'ordine di creazione (depends_on) */
   const edges = useMemo(() => {
@@ -304,7 +306,7 @@ export default function PortingPage() {
       JSON.stringify([
         sourceId,
         targetId,
-        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '', i.targetSettings ?? null, i.includeRows ?? false, i.dropUnavailablePermissions ?? false]),
+        [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '', i.targetSettings ?? null, i.includeRows ?? false, i.dropUnavailablePermissions ?? false, i.allowReplace ?? false]),
       ]),
     [sourceId, targetId, items],
   );
@@ -841,11 +843,34 @@ export default function PortingPage() {
                         </Space>
                       );
                     }
-                    if (!n.settings || !porting) return action;
-                    // Campaign e Queue: Site, Edge Group, email e numero si scelgono sul target
+                    // Data Action già presente sul target: se il contract cambia il provider deve ricrearla
+                    // (nuovo ID). Mai in automatico: lo decide l'utente, oggetto per oggetto
+                    const replaceBox =
+                      n.type === 'dataaction' && porting && n.target?.id ? (
+                        <Tooltip title="Se la Data Action non si può aggiornare (per esempio perché cambia il contract), viene cancellata e ricreata sul target con un nuovo ID. Il plan elenca chi la usa sul target: ciò che non porti in questo rilascio resta con l'ID vecchio e va ripubblicato. Senza questa opzione il plan è bloccato.">
+                          <Checkbox
+                            checked={!!allowReplace.get(keyOf(n))}
+                            onChange={(e) => setAllowReplace(new Map(allowReplace).set(keyOf(n), e.target.checked))}
+                          >
+                            Consenti la ricreazione (contract cambiato)
+                          </Checkbox>
+                        </Tooltip>
+                      ) : null;
+                    if (!n.settings || !porting) {
+                      return replaceBox ? (
+                        <Space direction="vertical" size={4}>
+                          {action}
+                          {replaceBox}
+                        </Space>
+                      ) : (
+                        action
+                      );
+                    }
+                    // Campaign, Queue e Data Action: valori legati all'ambiente scelti sul target
                     return (
                       <Space direction="vertical" size={4}>
                         {action}
+                        {replaceBox}
                         <TargetSettingsEditor
                           settings={n.settings}
                           options={targetValues.data}

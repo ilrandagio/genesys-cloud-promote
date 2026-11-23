@@ -7,6 +7,48 @@ import { lazyIdIndex } from '../genesys/dependencies.js';
 import { parse as parseYaml } from 'yaml';
 import { ID_TOKEN_G, idKey } from '../genesys/ids.js';
 
+/**
+ * Per ogni oggetto che il piano ricrea: chi lo usa sul target (Dependency Tracking del target). Ricreandolo
+ * cambia ID, quindi chi lo usa e non viene portato in questo rilascio resta con un riferimento all'ID vecchio.
+ */
+async function consumersOfReplaced(
+  replaced: string[],
+  items: Map<string, PortItem>,
+  portedTargetIds: Set<string>,
+  target: GenesysClient,
+  info: (l: string) => void,
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const addr of replaced) {
+    const it = items.get(addr);
+    if (!it?.targetId) continue;
+    const what = `${CATALOG[it.type].label} "${it.name}"`;
+    let consumers: { id: string; name: string; type: string }[] = [];
+    try {
+      const objectType = it.type === 'dataaction' ? 'DATAACTION' : it.type.toUpperCase();
+      consumers = await target.listAll(
+        '/api/v2/architect/dependencytracking/consumingresources',
+        `&id=${encodeURIComponent(it.targetId)}&objectType=${objectType}`,
+      );
+    } catch (e) {
+      out.push(`${what} viene RICREATA con un nuovo ID; non è stato possibile leggere chi la usa sul target (${(e as Error).message}): verificare Flows e Scripts che la usano.`);
+      continue;
+    }
+    const notPorted = consumers.filter((c) => !portedTargetIds.has(c.id));
+    const list = (cs: typeof consumers) => cs.map((c) => `${c.name} (${c.type})`).join(', ');
+    info(`${what}: ricreata; usata sul target da ${consumers.length ? list(consumers) : 'nessun oggetto'}`);
+    out.push(
+      `${what} viene RICREATA (cancellata e creata con un nuovo ID) perché il provider non può aggiornarla, per esempio per un contract cambiato.` +
+        (notPorted.length
+          ? ` Sul target la usano oggetti non portati in questo rilascio, che resterebbero con l'ID vecchio: ${list(notPorted)}. Portarli nello stesso rilascio oppure ripubblicarli dopo.`
+          : consumers.length
+            ? ` Chi la usa sul target (${list(consumers)}) è portato in questo rilascio e riceve il nuovo ID.`
+            : ' Sul target non risulta usata da altri oggetti.'),
+    );
+  }
+  return out;
+}
+
 /** Voci TTS dei Flows da portare, lette dai loro file YAML esportati */
 async function voicesOfFlows(cfg: TfJson, addresses: Map<PortItem, string>, baseDir: string): Promise<FlowVoice[]> {
   const out: FlowVoice[] = [];
@@ -72,7 +114,15 @@ import {
   type TfJson,
 } from './exportConfig.js';
 import { exportObjects } from './exporter.js';
-import { createdResources, openSnapshot, prepareRollback, sealSnapshot, takeRollbackSnapshot, type RollbackSnapshot } from './rollback.js';
+import {
+  createdResources,
+  openSnapshot,
+  prepareRollback,
+  resolveReplacedIds,
+  sealSnapshot,
+  takeRollbackSnapshot,
+  type RollbackSnapshot,
+} from './rollback.js';
 import { terraform, tfOrThrow, type TfCreds } from './terraform.js';
 
 /** Log del job bufferizzato e salvato su DB ogni secondo */
@@ -438,7 +488,21 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   }
 
   // ---- 4. Piano salvato ----
-  await savePlan({ exportDir, targetEnv, tgtCreds, log, setJob, warnings: planWarnings });
+  // Ricreazioni consentite dall'utente (Data Actions il cui contract cambia): l'oggetto cambia ID, quindi
+  // si avvisa di chi lo usa sul target e non viene portato in questo rilascio
+  const replaceable = new Map<string, PortItem>();
+  for (const [it, addr] of addresses) if (it.allowReplace && it.targetId) replaceable.set(addr, it);
+  const portedIds = new Set(job.items.filter((i) => i.action === 'port' && i.targetId).map((i) => i.targetId!));
+  await savePlan({
+    exportDir,
+    targetEnv,
+    tgtCreds,
+    log,
+    setJob,
+    warnings: planWarnings,
+    allowedReplaces: new Set(replaceable.keys()),
+    replaceWarnings: (replaced) => consumersOfReplaced(replaced, replaceable, portedIds, new GenesysClient(targetEnv), log.info),
+  });
 }
 
 /**
@@ -454,14 +518,21 @@ async function savePlan(opts: {
   setJob: SetJob;
   warnings: string[];
   allowedDeletes?: Set<string>;
+  allowedReplaces?: Set<string>;
+  /** Avvisi da aggiungere per le ricreazioni effettivamente presenti nel piano (indirizzo → testo) */
+  replaceWarnings?: (addresses: string[]) => Promise<string[]>;
 }) {
-  const { exportDir, targetEnv, tgtCreds, log, setJob, warnings, allowedDeletes } = opts;
+  const { exportDir, targetEnv, tgtCreds, log, setJob, warnings, allowedDeletes, allowedReplaces, replaceWarnings } = opts;
   log.info(`Piano delle modifiche su ${targetEnv.name} (nessuna modifica applicata)`);
   const plan = await tfOrThrow(['plan', '-no-color', '-input=false', `-out=${PLAN_FILE}`], exportDir, tgtCreds, log.line);
   const planJson = await showPlan(exportDir, PLAN_FILE, tgtCreds);
   const summary = summarize(planJson);
-  if (warnings.length) summary.warnings = warnings;
-  let blockedReason = blockReason(summary, allowedDeletes);
+  const replaced = summary.changes
+    .filter((c) => c.actions.includes('delete') && c.actions.includes('create') && allowedReplaces?.has(c.address))
+    .map((c) => c.address);
+  const allWarnings = [...warnings, ...(replaced.length && replaceWarnings ? await replaceWarnings(replaced) : [])];
+  if (allWarnings.length) summary.warnings = allWarnings;
+  let blockedReason = blockReason(summary, allowedDeletes, allowedReplaces);
   if (!blockedReason && !summary.changes.length) blockedReason = 'Il piano non contiene modifiche: niente da eseguire.';
   log.info(
     `Riepilogo: ${summary.add} da creare, ${summary.change} da aggiornare, ` +
@@ -509,7 +580,7 @@ async function runRollbackPlan(job: JobRow, workDir: string, log: JobLog, setJob
   const tgtCreds = credsOf(targetEnv);
   const exportDir = path.join(workDir, 'export');
   await mkdir(exportDir, { recursive: true });
-  const allowedDeletes = await prepareRollback({
+  const { allowedDeletes, allowedReplaces } = await prepareRollback({
     snapshot,
     dir: exportDir,
     creds: tgtCreds,
@@ -526,7 +597,10 @@ async function runRollbackPlan(job: JobRow, workDir: string, log: JobLog, setJob
       ? ['Campaigns e Campaign Sequences restano spente anche se prima erano attive: si riavviano a mano.']
       : []),
   ];
-  await savePlan({ exportDir, targetEnv, tgtCreds, log, setJob, warnings, allowedDeletes });
+  if (allowedReplaces.size) {
+    warnings.push(`Oggetti ricreati dall'esecuzione che vengono ricreati com'erano prima (nuovo ID): ${[...allowedReplaces].join(', ')}`);
+  }
+  await savePlan({ exportDir, targetEnv, tgtCreds, log, setJob, warnings, allowedDeletes, allowedReplaces });
 }
 
 /** Esecuzione: applica il piano salvato del plan collegato, solo se il target non è cambiato */
@@ -601,6 +675,7 @@ async function runApply(job: JobRow, workDir: string, log: JobLog, setJob: SetJo
     const applied = appliedFromOutput(res.output);
     // Oggetti creati (anche con esito parziale): nel ripristino vanno cancellati
     snapshot.created = await createdResources(dir, saved);
+    await resolveReplacedIds(dir, snapshot);
     await setJob({ appliedResources: applied, rollbackEncrypted: sealSnapshot(snapshot) });
     if (res.code !== 0) {
       throw new Error(

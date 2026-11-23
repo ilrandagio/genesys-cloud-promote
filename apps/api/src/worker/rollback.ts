@@ -36,7 +36,11 @@ export interface RollbackSnapshot {
   takenAt: string;
   cfg: TfJson;
   files: Record<string, string>;
-  imports: { address: string; id: string; label: string }[];
+  /**
+   * Risorse da importare dal target. replaced: ricreata dall'esecuzione (nuovo ID, letto dallo state dopo
+   * l'apply tramite planAddress): il ripristino la ricrea com'era
+   */
+  imports: { address: string; id: string; label: string; planAddress?: string; replaced?: boolean }[];
   created: StateResource[];
   notRestorable: string[];
 }
@@ -116,6 +120,7 @@ export async function takeRollbackSnapshot(opts: {
   };
 
   const toExport: PortItem[] = [];
+  const planInfo = new Map<PortItem, { planAddress: string; replaced: boolean }>();
   for (const rc of plan.resource_changes ?? []) {
     const actions = rc.change.actions;
     if (rc.mode && rc.mode !== 'managed') continue;
@@ -125,7 +130,8 @@ export async function takeRollbackSnapshot(opts: {
       snapshot.notRestorable.push(`${rc.address}: cancellato dall'esecuzione, non si ricrea in automatico`);
       continue;
     }
-    if (!actions.includes('update')) continue;
+    const replaced = actions.includes('delete') && actions.includes('create');
+    if (!actions.includes('update') && !replaced) continue;
     const before = (rc.change.before ?? {}) as Record<string, unknown>;
     const id = typeof before.id === 'string' ? before.id : undefined;
     if (!id) {
@@ -135,7 +141,7 @@ export async function takeRollbackSnapshot(opts: {
     if (FROM_PRIOR_VALUES.has(type)) {
       snapshot.cfg.resource![type] ??= {};
       snapshot.cfg.resource![type][label] = configFromValues(before) as any;
-      snapshot.imports.push({ address: `${type}.${label}`, id, label: rc.address });
+      snapshot.imports.push({ address: `${type}.${label}`, id, label: rc.address, planAddress: rc.address, replaced });
       continue;
     }
     const objectType = typeOfResource(type);
@@ -145,7 +151,7 @@ export async function takeRollbackSnapshot(opts: {
     }
     // Nome e (per i Flows) tipo attuali sul target: servono a trovarlo nell'export
     const current = await client.get<any>(CATALOG[objectType].getPath.replace('{id}', encodeURIComponent(id)));
-    toExport.push({
+    const pending: PortItem = {
       type: objectType,
       id,
       name: String(current?.name ?? ''),
@@ -153,7 +159,9 @@ export async function takeRollbackSnapshot(opts: {
       action: 'port',
       targetStatus: 'different',
       targetId: id,
-    });
+    };
+    toExport.push(pending);
+    planInfo.set(pending, { planAddress: rc.address, replaced });
   }
 
   if (toExport.length) {
@@ -204,7 +212,9 @@ export async function takeRollbackSnapshot(opts: {
       snapshot.cfg.resource![type] = { ...(snapshot.cfg.resource![type] ?? {}), ...labels };
     }
     if (cfg.data) snapshot.cfg.data = cfg.data;
-    for (const [it, addr] of addresses) snapshot.imports.push({ address: addr, id: it.id, label: `${CATALOG[it.type].label} "${it.name}"` });
+    for (const [it, addr] of addresses) {
+      snapshot.imports.push({ address: addr, id: it.id, label: `${CATALOG[it.type].label} "${it.name}"`, ...planInfo.get(it) });
+    }
     const cfgName = path.basename(cfgPath);
     for (const [rel, b64] of Object.entries(await collect(exportDir))) {
       if (rel !== cfgName && !/\.tfstate(\.backup)?$/i.test(rel)) snapshot.files[rel] = b64;
@@ -234,6 +244,29 @@ export async function createdResources(dir: string, plan: PlanJson): Promise<Sta
   return (state.resources ?? []).filter((r) => r.mode === 'managed' && created.has(`${r.type}.${r.name}`));
 }
 
+/**
+ * Dopo un'esecuzione: le risorse ricreate hanno un nuovo ID sul target, letto dallo state. Se una ricreazione
+ * non è avvenuta (esecuzione interrotta) resta l'ID precedente, che è ancora quello valido.
+ */
+export async function resolveReplacedIds(dir: string, snapshot: RollbackSnapshot) {
+  if (!snapshot.imports.some((i) => i.replaced)) return;
+  let state: { resources?: { mode: string; type: string; name: string; instances: { attributes?: { id?: string } }[] }[] };
+  try {
+    state = JSON.parse(await readFile(path.join(dir, 'terraform.tfstate'), 'utf8'));
+  } catch {
+    return;
+  }
+  const idOf = new Map<string, string | undefined>(
+    (state.resources ?? [])
+      .filter((r) => r.mode === 'managed')
+      .map((r): [string, string | undefined] => [`${r.type}.${r.name}`, r.instances?.[0]?.attributes?.id]),
+  );
+  for (const i of snapshot.imports) {
+    const id = i.replaced && i.planAddress ? idOf.get(i.planAddress) : undefined;
+    if (id) i.id = id;
+  }
+}
+
 export const sealSnapshot = (s: RollbackSnapshot) => encrypt(JSON.stringify(s));
 
 export function openSnapshot(encrypted: string): RollbackSnapshot {
@@ -254,7 +287,7 @@ export async function prepareRollback(opts: {
   providerVersion: string;
   line: (l: string) => void;
   info: (l: string) => void;
-}): Promise<Set<string>> {
+}): Promise<{ allowedDeletes: Set<string>; allowedReplaces: Set<string> }> {
   const { snapshot, dir, creds, providerVersion, line, info } = opts;
   for (const [rel, b64] of Object.entries(snapshot.files)) {
     const full = path.resolve(dir, ...rel.split('/'));
@@ -297,5 +330,7 @@ export async function prepareRollback(opts: {
     await writeFile(statePath, JSON.stringify(state, null, 2));
     info(`Oggetti creati dall'esecuzione, da cancellare: ${[...allowedDeletes].join(', ')}`);
   }
-  return allowedDeletes;
+  // Oggetti ricreati dall'esecuzione: per tornare alla versione precedente vanno ricreati di nuovo
+  const allowedReplaces = new Set(snapshot.imports.filter((i) => i.replaced).map((i) => i.address));
+  return { allowedDeletes, allowedReplaces };
 }

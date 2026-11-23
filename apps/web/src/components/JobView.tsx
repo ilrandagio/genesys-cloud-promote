@@ -82,6 +82,11 @@ export default function JobView({
           <span>
             Verrà applicato esattamente il piano simulato il {fmt(j.createdAt)}:{' '}
             <b>{summary?.add ?? 0}</b> da creare, <b>{summary?.change ?? 0}</b> da aggiornare
+            {summary?.replace ? (
+              <>
+                , <b style={{ color: '#cf1322' }}>{summary.replace} da ricreare</b> (nuovo ID: vedi gli avvisi)
+              </>
+            ) : null}
             {summary?.destroy ? (
               <>
                 , <b style={{ color: '#cf1322' }}>{summary.destroy} da cancellare</b> (oggetti creati dall'esecuzione che si

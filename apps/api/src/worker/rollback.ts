@@ -146,7 +146,7 @@ export async function takeRollbackSnapshot(opts: {
     }
     const objectType = typeOfResource(type);
     if (!objectType) {
-      snapshot.notRestorable.push(`${rc.address}: tipo non gestito dal ripristino`);
+      snapshot.notRestorable.push(`${rc.address}: tipo Terraform generico, non ripristinabile in automatico`);
       continue;
     }
     // Nome e (per i Flows) tipo attuali sul target: servono a trovarlo nell'export

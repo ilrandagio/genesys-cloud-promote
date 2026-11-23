@@ -244,7 +244,7 @@ export default function JobView({
           {j.mode === 'BACKUP' && j.backup && (
             <>
               <Descriptions.Item label="Contenuto">
-                {j.backup.selection.length} tipi
+                {j.backup.full ? 'completo' : `${j.backup.selection.length} tipi`}
                 {j.backup.counts ? `, ${Object.values(j.backup.counts).reduce((a, b) => a + b, 0)} oggetti` : ''}
               </Descriptions.Item>
               <Descriptions.Item label="Archivio">

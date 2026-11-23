@@ -39,6 +39,8 @@ export const environments = pgTable('environments', {
 
 /** Backup: cosa esportare e risultato */
 export interface BackupInfo {
+  /** Backup completo: tutto ciò che il provider esporta, senza filtri né esclusioni */
+  full?: boolean;
   selection: { type: string; all: boolean; objects?: { id: string; name: string; subtype?: string }[] }[];
   /** Nome del file cifrato in BACKUP_DIR (assente finché il backup non è completato) */
   file?: string;
@@ -103,6 +105,11 @@ export const jobs = pgTable('jobs', {
    * servono al plan di ripristino
    */
   rollbackEncrypted: text('rollback_encrypted'),
+  /**
+   * Tipi Terraform generici (fuori dal catalogo) da portare interi: export dal sorgente, abbinamento con il
+   * target per etichetta, import di quelli esistenti
+   */
+  terraformTypes: jsonb('terraform_types').$type<string[]>(),
   /** Backup: oggetti scelti, archivio cifrato su disco, dimensione e conteggi per tipo */
   backup: jsonb('backup').$type<BackupInfo>(),
 }, (t) => [

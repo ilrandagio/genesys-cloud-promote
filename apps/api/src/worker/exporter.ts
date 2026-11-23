@@ -14,9 +14,14 @@ import { tfOrThrow, type TfCreds } from './terraform.js';
 export async function exportObjects(opts: {
   items: PortItem[];
   /** Filtri aggiuntivi già pronti (tipo::regex), es. tutti gli oggetti di un tipo per il backup */
-  filters?: { type: ObjectType; filter: string }[];
+  filters?: { type?: ObjectType; filter: string }[];
   /** Scrive anche lo state (ID degli oggetti esportati): serve al backup */
   includeState?: boolean;
+  /**
+   * Solo backup completo: tutta l'org, senza filtri né attributi esclusi (membri e utenti compresi).
+   * Mai usato dal porting, che esporta sempre e solo gli oggetti scelti
+   */
+  wholeOrg?: boolean;
   runnerDir: string;
   exportDir: string;
   creds: TfCreds;
@@ -24,13 +29,13 @@ export async function exportObjects(opts: {
   line: (l: string) => void;
   info: (l: string) => void;
 }): Promise<{ cfg: TfJson; cfgPath: string }> {
-  const { items, filters = [], includeState = false, runnerDir, exportDir, creds, orgName, line, info } = opts;
-  if (!items.length && !filters.length) throw new Error('Export senza oggetti: rifiutato (esporterebbe l\'intera org)');
+  const { items, filters = [], includeState = false, wholeOrg = false, runnerDir, exportDir, creds, orgName, line, info } = opts;
+  if (!wholeOrg && !items.length && !filters.length) throw new Error('Export senza oggetti: rifiutato (esporterebbe l\'intera org)');
   for (const it of items) if (CATALOG[it.type].singleton) throw new Error(`${CATALOG[it.type].label}: oggetto unico per org, non esportabile`);
-  const exportedTypes = new Set<ObjectType>([...items.map((i) => i.type), ...filters.map((f) => f.type)]);
+  const exportedTypes = new Set<ObjectType>([...items.map((i) => i.type), ...filters.flatMap((f) => (f.type ? [f.type] : []))]);
 
   // Esclusione solo per i tipi esportati: il provider rifiuta l'esclusione di attributi di tipi non esportati
-  const excluded = [
+  const excluded = wholeOrg ? [] : [
     ...(exportedTypes.has('queue')
       ? [
           'genesyscloud_routing_queue.members',
@@ -63,7 +68,7 @@ export async function exportObjects(opts: {
           // compilare a mano (var.genesyscloud_flow_..._filepath) e il plan fallisce con "empty file path"
           use_legacy_architect_flow_exporter: false,
           split_files_by_resource: false,
-          include_filter_resources: [...items.map(includeFilter), ...filters.map((f) => f.filter)],
+          ...(wholeOrg ? {} : { include_filter_resources: [...items.map(includeFilter), ...filters.map((f) => f.filter)] }),
           ...(excluded.length ? { exclude_attributes: excluded } : {}),
         },
       },

@@ -39,7 +39,7 @@ export async function runBackup(
 ) {
   const env = await getEnvironment(job.sourceEnvId);
   const info = job.backup;
-  if (!info?.selection.length) throw new Error('Backup senza tipi scelti');
+  if (!info || (!info.full && !info.selection.length)) throw new Error('Backup senza tipi scelti');
 
   const items: PortItem[] = [];
   const filters: { type: ObjectType; filter: string }[] = [];
@@ -56,16 +56,20 @@ export async function runBackup(
   }
   const total = filters.length + items.length;
   log.info(
-    `Backup di ${env.name}: ${info.selection.length} tipi (${filters.length} completi, ${items.length} oggetti scelti singolarmente). ` +
-      'Sola lettura: nessuna modifica all\'org.',
+    info.full
+      ? `Backup completo di ${env.name}: tutto ciò che il provider esporta, senza filtri né esclusioni (anche utenti e membri). ` +
+          "Sola lettura: nessuna modifica all'org. Su un'org grande richiede tempo."
+      : `Backup di ${env.name}: ${info.selection.length} tipi (${filters.length} completi, ${items.length} oggetti scelti singolarmente). ` +
+          "Sola lettura: nessuna modifica all'org.",
   );
-  if (!total) throw new Error('Nessun oggetto da salvare');
+  if (!info.full && !total) throw new Error('Nessun oggetto da salvare');
 
   const exportDir = path.join(workDir, 'export');
   const { cfg } = await exportObjects({
     items,
     filters,
     includeState: true,
+    wholeOrg: !!info.full,
     runnerDir: path.join(workDir, 'runner'),
     exportDir,
     creds: credsOf(env),
@@ -87,6 +91,7 @@ export async function runBackup(
         createdAt: job.createdAt.toISOString(),
         createdBy: job.createdBy,
         providerVersion: config.GENESYS_PROVIDER_VERSION,
+        full: !!info.full,
         selection: info.selection.map((s) => ({ type: s.type, all: s.all, objects: s.objects?.map((o) => o.name) })),
         counts,
       },

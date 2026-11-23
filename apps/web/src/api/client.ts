@@ -221,6 +221,8 @@ export interface JobSummary {
 }
 
 export interface BackupInfo {
+  /** Backup completo: tutto ciò che il provider esporta, senza filtri né esclusioni */
+  full?: boolean;
   selection: { type: ObjectType; all: boolean; objects?: { id: string; name: string; subtype?: string }[] }[];
   file?: string;
   size?: number;

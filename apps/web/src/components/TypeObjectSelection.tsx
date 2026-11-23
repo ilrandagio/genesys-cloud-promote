@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { Alert, Badge, Button, Checkbox, Input, Segmented, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Badge, Button, Card, Checkbox, Input, Segmented, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { api, type GcObject, type ObjectType } from '../api/client';
 import { flowTypeLabel } from './StatusTag';
@@ -16,6 +16,21 @@ interface TypeInfo {
   label: string;
   group: string;
 }
+
+/** Risorsa del provider fuori dal catalogo: si porta come tipo intero */
+export interface TerraformTypeInfo {
+  tfType: string;
+  label: string;
+  group: string;
+  flags: ('env' | 'security' | 'users' | 'data')[];
+}
+
+const FLAG_TAG: Record<TerraformTypeInfo['flags'][number], { color: string; label: string; help: string }> = {
+  env: { color: 'orange', label: 'legato all\'ambiente', help: 'Numeri, domini, indirizzi o infrastruttura: copiati così come sono dal sorgente' },
+  security: { color: 'red', label: 'sicurezza', help: 'Accesso, identity provider, client OAuth o permessi' },
+  users: { color: 'red', label: 'utenti', help: 'Utenti e loro impostazioni' },
+  data: { color: 'default', label: 'dati', help: 'Dati operativi più che configurazione' },
+};
 
 /**
  * Configurazione minima per far funzionare l'instradamento delle interazioni in ingresso: Flows e ciò che
@@ -68,10 +83,15 @@ export default function TypeObjectSelection({
   onChange,
   onResolved,
   excludeTypes = [],
+  generic,
+  onGenericChange,
 }: {
   envId: string;
   value: TypeSelection;
   onChange: (v: TypeSelection) => void;
+  /** Tipi Terraform generici scelti (solo se la pagina li gestisce: Disaster Recovery) */
+  generic?: string[];
+  onGenericChange?: (v: string[]) => void;
   /** Oggetti risultanti e tipi ancora in caricamento, aggiornati a ogni cambio */
   onResolved?: (r: { objects: GcObject[]; loading: ObjectType[] }) => void;
   excludeTypes?: ObjectType[];
@@ -81,6 +101,13 @@ export default function TypeObjectSelection({
     queryFn: () => api<TypeInfo[]>('/api/object-types'),
   });
   const available = (types.data ?? []).filter((t) => !excludeTypes.includes(t.type));
+  const withGeneric = !!onGenericChange;
+  const tfTypes = useQuery({
+    queryKey: ['terraform-types'],
+    queryFn: () => api<TerraformTypeInfo[]>('/api/terraform-types'),
+    enabled: withGeneric,
+  });
+  const genericChosen = new Set(generic ?? []);
   const chosen = Object.keys(value) as ObjectType[];
 
   // Elenchi del sorgente dei soli tipi scelti
@@ -116,8 +143,10 @@ export default function TypeObjectSelection({
     else delete next[type];
     onChange(next);
   };
-  const preset = (list: ObjectType[]) =>
+  const preset = (list: ObjectType[], allGeneric = false) => {
+    if (withGeneric) onGenericChange!(allGeneric ? (tfTypes.data ?? []).map((t) => t.tfType) : []);
     onChange(Object.fromEntries(list.filter((t) => available.some((a) => a.type === t)).map((t) => [t, value[t] ?? { mode: 'all', picked: [] }])));
+  };
 
   const rows = available.map((t) => ({ ...t, key: t.type }));
   const failed = chosen.filter((t) => errorOf(t));
@@ -131,14 +160,17 @@ export default function TypeObjectSelection({
             Configurazione minima
           </Button>
         </Tooltip>
-        <Button size="small" onClick={() => preset(available.map((t) => t.type))}>
-          Tutto
-        </Button>
-        <Button size="small" onClick={() => onChange({})}>
+        <Tooltip title={withGeneric ? 'Tutti i tipi del catalogo e tutte le altre risorse del provider' : undefined}>
+          <Button size="small" onClick={() => preset(available.map((t) => t.type), true)}>
+            Tutto
+          </Button>
+        </Tooltip>
+        <Button size="small" onClick={() => preset([])}>
           Nessuno
         </Button>
         <Typography.Text>
           {chosen.length} tipi, {resolved.objects.length} oggetti
+          {withGeneric ? ` · ${genericChosen.size} tipi Terraform interi` : ''}
           {resolved.loading.length ? ` (caricamento di ${resolved.loading.length} tipi…)` : ''}
         </Typography.Text>
       </Space>
@@ -217,6 +249,62 @@ export default function TypeObjectSelection({
           },
         ]}
       />
+      {withGeneric && (
+        <Card
+          size="small"
+          title="Altre risorse del provider (tipo intero)"
+          extra={
+            <Space>
+              <Button size="small" onClick={() => onGenericChange!((tfTypes.data ?? []).map((t) => t.tfType))}>
+                Tutte
+              </Button>
+              <Button
+                size="small"
+                onClick={() => onGenericChange!((tfTypes.data ?? []).filter((t) => !t.flags.length).map((t) => t.tfType))}
+              >
+                Solo configurazione
+              </Button>
+              <Button size="small" onClick={() => onGenericChange!([])}>
+                Nessuna
+              </Button>
+            </Space>
+          }
+        >
+          <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+            Risorse senza analisi dettagliata: si portano tutti gli oggetti del tipo, abbinati al target per nome (quelli
+            presenti vengono aggiornati, gli altri creati). I valori legati all'ambiente vengono copiati così come sono, e il
+            ripristino automatico non li riporta indietro: sceglile in base a cosa serve su questa org.
+          </Typography.Paragraph>
+          <Table
+            size="small"
+            rowKey="tfType"
+            loading={tfTypes.isLoading}
+            dataSource={tfTypes.data ?? []}
+            pagination={false}
+            scroll={{ y: 420 }}
+            rowSelection={{
+              selectedRowKeys: [...genericChosen],
+              onChange: (keys) => onGenericChange!(keys.map(String)),
+            }}
+            columns={[
+              { title: 'Gruppo', dataIndex: 'group', width: 180, render: (g: string) => <Typography.Text type="secondary">{g}</Typography.Text> },
+              { title: 'Risorsa', dataIndex: 'label' },
+              { title: 'Terraform', dataIndex: 'tfType', render: (t: string) => <Typography.Text code>{t}</Typography.Text> },
+              {
+                title: '',
+                dataIndex: 'flags',
+                width: 200,
+                render: (flags: TerraformTypeInfo['flags']) =>
+                  flags.map((f) => (
+                    <Tooltip key={f} title={FLAG_TAG[f].help}>
+                      <Tag color={FLAG_TAG[f].color}>{FLAG_TAG[f].label}</Tag>
+                    </Tooltip>
+                  )),
+              },
+            ]}
+          />
+        </Card>
+      )}
     </Space>
   );
 }

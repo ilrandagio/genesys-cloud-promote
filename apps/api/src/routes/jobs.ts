@@ -4,6 +4,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { OBJECT_TYPES, isStaticDataAction } from '../genesys/types.js';
+import { TERRAFORM_TYPE_SET } from '../genesys/terraformTypes.js';
 import { db, schema } from '../lib/db.js';
 import { enqueuePorting } from '../lib/queue.js';
 import { getEnvironment, HttpError } from '../lib/repo.js';
@@ -76,6 +77,7 @@ const publicFields = {
   rollbackOfJobId: j.rollbackOfJobId,
   rollbackAvailable: sql<boolean>`${j.rollbackEncrypted} is not null`,
   backup: j.backup,
+  terraformTypes: j.terraformTypes,
 };
 
 type PublicJob = Awaited<ReturnType<typeof selectJobs>>[number];
@@ -148,7 +150,9 @@ export async function jobRoutes(app: FastifyInstance) {
       .object({
         sourceEnvId: z.string(),
         targetEnvId: z.string(),
-        items: z.array(itemSchema).min(1),
+        items: z.array(itemSchema).default([]),
+        /** Tipi Terraform generici da portare interi (Disaster Recovery) */
+        terraformTypes: z.array(z.string()).default([]),
         /** Archi dell'albero delle dipendenze ("from" usa "to"), per l'ordine di creazione */
         edges: z.array(z.object({ from: z.string(), to: z.string() })).default([]),
       })
@@ -165,7 +169,11 @@ export async function jobRoutes(app: FastifyInstance) {
         `Data Actions predefinite di Genesys, non portabili (si usa quella del target): ${staticPorted.map((i) => i.name).join(', ')}`,
       );
     }
-    if (!body.items.some((i) => i.action === 'port')) throw new HttpError(400, 'Nessun oggetto da portare');
+    const unknownTypes = body.terraformTypes.filter((t) => !TERRAFORM_TYPE_SET.has(t));
+    if (unknownTypes.length) throw new HttpError(400, `Tipi Terraform non riconosciuti: ${unknownTypes.join(', ')}`);
+    if (!body.items.some((i) => i.action === 'port') && !body.terraformTypes.length) {
+      throw new HttpError(400, 'Nessun oggetto da portare');
+    }
 
     const keys = new Set(body.items.map((i) => `${i.type}:${i.id}`.toLowerCase()));
     const edges = body.edges.filter((e) => keys.has(e.from.toLowerCase()) && keys.has(e.to.toLowerCase()));
@@ -178,6 +186,7 @@ export async function jobRoutes(app: FastifyInstance) {
         targetEnvId: body.targetEnvId,
         items: body.items,
         edges,
+        terraformTypes: body.terraformTypes.length ? [...new Set(body.terraformTypes)] : null,
         createdBy: sessionUser(req).sub,
       })
       .returning({ id: j.id });
@@ -326,6 +335,7 @@ export async function jobRoutes(app: FastifyInstance) {
     const body = z
       .object({
         envId: z.string(),
+        full: z.boolean().default(false),
         selection: z
           .array(
             z.object({
@@ -334,11 +344,11 @@ export async function jobRoutes(app: FastifyInstance) {
               objects: z.array(z.object({ id: z.string(), name: z.string(), subtype: z.string().optional() })).optional(),
             }),
           )
-          .min(1),
+          .default([]),
       })
       .parse(req.body);
-    const selection = body.selection.filter((s) => s.all || s.objects?.length);
-    if (!selection.length) throw new HttpError(400, 'Nessun oggetto scelto per il backup');
+    const selection = body.full ? [] : body.selection.filter((s) => s.all || s.objects?.length);
+    if (!body.full && !selection.length) throw new HttpError(400, 'Nessun oggetto scelto per il backup');
     const env = await getEnvironment(body.envId);
     const [job] = await db
       .insert(j)
@@ -347,7 +357,7 @@ export async function jobRoutes(app: FastifyInstance) {
         sourceEnvId: env.id,
         targetEnvId: env.id,
         items: [],
-        backup: { selection },
+        backup: { selection, full: body.full },
         createdBy: sessionUser(req).sub,
       })
       .returning({ id: j.id });

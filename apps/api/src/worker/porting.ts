@@ -142,6 +142,7 @@ import {
 } from './exportConfig.js';
 import { runBackup } from './backup.js';
 import { exportObjects } from './exporter.js';
+import { checkExportVariables, matchGenericOnTarget, resourceExists, stateIds, unresolvedGenericIds } from './generic.js';
 import {
   createdResources,
   openSnapshot,
@@ -245,12 +246,19 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // ---- 1. Export dal sorgente ----
   let cfg: TfJson = { resource: {} };
   let cfgPath = path.join(exportDir, 'genesyscloud.tf.json');
-  if (!toExport.length) {
+  // Tipi Terraform generici (Disaster Recovery): tutti gli oggetti del tipo, abbinati al target per etichetta
+  const genericTypes = job.terraformTypes ?? [];
+  let sourceGenericIds = new Map<string, string>();
+  if (!toExport.length && !genericTypes.length) {
     await mkdir(exportDir, { recursive: true });
     log.info('Nessun oggetto da esportare dal sorgente: solo oggetti unici per org');
   } else {
+    if (genericTypes.length) log.info(`Tipi Terraform generici da portare interi: ${genericTypes.join(', ')}`);
     ({ cfg, cfgPath } = await exportObjects({
       items: toExport,
+      filters: genericTypes.map((t) => ({ filter: `${t}::.*` })),
+      // Con tipi generici serve lo state: ID sorgente di ogni risorsa, per rimappare i riferimenti
+      includeState: genericTypes.length > 0,
       runnerDir,
       exportDir,
       creds: srcCreds,
@@ -258,6 +266,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
       line: log.line,
       info: log.info,
     }));
+    if (genericTypes.length) sourceGenericIds = await stateIds(exportDir, new Set(genericTypes));
   }
 
   // ---- 2. Selezione risorse e rimappatura ID ----
@@ -276,7 +285,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
       // dettaglio non leggibile: abbinamento solo per nome
     }
   }
-  const addresses = selectResources(cfg, toExport, match);
+  const addresses = selectResources(cfg, toExport, match, new Set(genericTypes));
   const missing = toExport.filter((i) => !addresses.has(i));
   if (missing.length) {
     // Le Data Actions predefinite (statiche) l'export le scrive come data source, non come risorse
@@ -329,6 +338,21 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const sameJobRefs = new Map<string, string>();
   for (const [it, addr] of addresses) sameJobRefs.set(it.id.toLowerCase(), addr);
 
+  // Tipi generici: abbinamento con il target per etichetta (stessa etichetta = stesso nome), import di quelli
+  // esistenti; i riferimenti agli oggetti generici diventano riferimenti Terraform nello stesso job
+  const generic = genericTypes.length
+    ? await matchGenericOnTarget({
+        cfg,
+        genericTypes,
+        sourceIds: sourceGenericIds,
+        targetEnv,
+        workDir,
+        creds: tgtCreds,
+        log,
+      })
+    : { imports: [], warnings: [] };
+  for (const [addr, srcId] of sourceGenericIds) if (resourceExists(cfg, addr)) sameJobRefs.set(srcId.toLowerCase(), addr);
+
   const missingDivisions = await mapDivisionsByName(sourceEnv, targetEnv, targetIds, log.info);
 
   // Link agli asset nei testi delle canned response: URL interi, prima della rimappatura dei GUID
@@ -362,6 +386,11 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // Triggers: ID citati nelle condizioni (matchCriteria) prima della rimappatura
   const triggerIdsBefore = triggerCriteriaIds(cfg);
   cfg = remapConfig(cfg, targetIds, sameJobRefs);
+  // Tipi generici: variabili senza valore (segreti non esportabili) e ID rimasti senza corrispondenza
+  if (genericTypes.length) {
+    await checkExportVariables(cfg, exportDir);
+    generic.warnings.push(...unresolvedGenericIds(cfg, new Set(genericTypes), targetIds, generic.imports));
+  }
 
   // Campaigns e Queues: Site, Edge Group, email e numero scelti sul target (mai quelli del sorgente)
   await applyTargetSettings(cfg, addresses, targetClient, log.info);
@@ -373,7 +402,11 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // Utenti mai portati: nessun Role può citare un utente del sorgente
   checkRoleUserConditions(cfg);
   // Roles: permessi che il target non ha (licenze diverse) → errore, oppure tolti se richiesto
-  const planWarnings = [...voiceWarnings, ...(await filterRolePermissions(cfg, addresses, targetClient, log.info))];
+  const planWarnings = [
+    ...voiceWarnings,
+    ...(await filterRolePermissions(cfg, addresses, targetClient, log.info)),
+    ...generic.warnings,
+  ];
 
   // Groups: Roles assegnati sul sorgente, assegnati anche sul target
   const extraImports: { addr: string; id: string }[] = [];
@@ -506,6 +539,10 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
       );
       await tfOrThrow(['import', '-no-color', '-input=false', addr, it.targetId], exportDir, tgtCreds, log.line);
     }
+  }
+  for (const { addr, id } of generic.imports) {
+    log.info(`Import di ${addr} nello state locale (tipo generico, esiste già sul target: ${id})`);
+    await tfOrThrow(['import', '-no-color', '-input=false', addr, id], exportDir, tgtCreds, log.line);
   }
   for (const { addr, id } of extraImports) {
     log.info(`Import di ${addr} nello state locale (Roles attuali del Group sul target)`);

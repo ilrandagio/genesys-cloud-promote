@@ -1,6 +1,6 @@
 import { DownloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, App, Button, Card, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Radio, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, appUrl, type Environment, type GcObject, type JobSummary, type ObjectType } from '../api/client';
@@ -18,6 +18,8 @@ export default function BackupPage() {
   const qc = useQueryClient();
   const [envId, setEnvId] = useSessionState<string | undefined>('backup.envId', undefined);
   const [selection, setSelection] = useSessionState<TypeSelection>('backup.selection', {});
+  /** Completo: tutto ciò che il provider esporta (backup esatto). Selezione: solo i tipi scelti */
+  const [full, setFull] = useSessionState('backup.full', true);
   const [resolved, setResolved] = useState<{ objects: GcObject[]; loading: ObjectType[] }>({ objects: [], loading: [] });
   const [submitting, setSubmitting] = useState(false);
 
@@ -37,7 +39,8 @@ export default function BackupPage() {
         method: 'POST',
         body: {
           envId,
-          selection: chosen.map(([type, c]) =>
+          full,
+          selection: full ? [] : chosen.map(([type, c]) =>
             c.mode === 'all'
               ? { type, all: true }
               : { type, all: false, objects: c.picked.map(({ id, name, subtype }) => ({ id, name, subtype })) },
@@ -64,7 +67,9 @@ export default function BackupPage() {
             title={
               !envId
                 ? "Scegli l'ambiente"
-                : !chosen.length
+                : full
+                  ? undefined
+                  : !chosen.length
                   ? 'Scegli almeno un tipo'
                   : resolved.loading.length
                     ? 'Attendi il caricamento degli elenchi'
@@ -75,7 +80,7 @@ export default function BackupPage() {
               type="primary"
               icon={<SaveOutlined />}
               loading={submitting}
-              disabled={!envId || !chosen.length || resolved.loading.length > 0 || chosen.length === pickedEmpty}
+              disabled={!envId || (!full && (!chosen.length || resolved.loading.length > 0 || chosen.length === pickedEmpty))}
               onClick={start}
             >
               Avvia il backup
@@ -88,8 +93,12 @@ export default function BackupPage() {
             type="info"
             showIcon
             message="Sola lettura: il backup non modifica l'ambiente"
-            description="Esporta con Terraform la configurazione scelta: risorse Terraform, file dei Flows, degli Scripts e audio dei Prompts, state con gli ID e un BACKUP.json che descrive il contenuto. L'archivio viene salvato cifrato sul server e si scarica dalla pagina del backup. Membri di Queues, Groups e Work Teams e utenti non sono inclusi. Con tutti i tipi su un'org grande può richiedere diversi minuti."
+            description="Esporta con Terraform la configurazione: risorse Terraform, file dei Flows, degli Scripts e audio dei Prompts, state con gli ID e un BACKUP.json che descrive il contenuto. L'archivio viene salvato cifrato sul server e si scarica dalla pagina del backup. Il backup completo comprende tutto ciò che il provider sa esportare, utenti, membri, telefonia e sicurezza compresi: su un'org grande può richiedere parecchi minuti."
           />
+          <Radio.Group value={full} onChange={(e) => setFull(e.target.value)}>
+            <Radio value={true}>Completo: tutto ciò che il provider esporta (backup esatto)</Radio>
+            <Radio value={false}>Selezione: solo i tipi e gli oggetti scelti</Radio>
+          </Radio.Group>
           <Space direction="vertical" size={2}>
             <Typography.Text type="secondary">Ambiente</Typography.Text>
             <Select
@@ -100,7 +109,7 @@ export default function BackupPage() {
               options={(envs.data ?? []).map((e) => ({ value: e.id, label: `${e.name} (${e.region})` }))}
             />
           </Space>
-          {envId && (
+          {envId && !full && (
             <TypeObjectSelection envId={envId} value={selection} onChange={setSelection} onResolved={setResolved} />
           )}
         </Space>
@@ -125,7 +134,7 @@ export default function BackupPage() {
               render: (_: unknown, j: JobSummary) =>
                 j.backup ? (
                   <Space size={4} wrap>
-                    <Tag>{j.backup.selection.length} tipi</Tag>
+                    {j.backup.full ? <Tag color="blue">completo</Tag> : <Tag>{j.backup.selection.length} tipi</Tag>}
                     {j.backup.counts && <Tag>{Object.values(j.backup.counts).reduce((a, b) => a + b, 0)} oggetti</Tag>}
                   </Space>
                 ) : null,

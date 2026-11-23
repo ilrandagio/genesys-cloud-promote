@@ -79,6 +79,17 @@ export function buildReleaseNotes(input: {
     out.push('');
   }
 
+  if (plan?.terraformTypes?.length) {
+    out.push(
+      '## Tipi Terraform portati interi',
+      '',
+      'Tutti gli oggetti di questi tipi, abbinati al target per nome (dettaglio nelle modifiche qui sotto):',
+      '',
+      plan.terraformTypes.map((t) => `- \`${t}\``).join('\n'),
+      '',
+    );
+  }
+
   const reused = apply.items.filter((i) => i.action === 'reuse');
   if (reused.length) {
     out.push(

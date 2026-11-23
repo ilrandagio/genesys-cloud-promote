@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { TERRAFORM_TYPES } from '../genesys/terraformTypes.js';
 import { CATALOG, listObjects } from '../genesys/catalog.js';
 import { GenesysClient } from '../genesys/client.js';
 import { TargetComparer, diffPaths, normalize } from '../genesys/compare.js';
@@ -19,6 +20,9 @@ export async function objectRoutes(app: FastifyInstance) {
   app.get('/api/object-types', async () =>
     OBJECT_TYPES.map((t) => ({ type: t, label: CATALOG[t].label, group: CATALOG[t].group })),
   );
+
+  /** Risorse del provider fuori dal catalogo: nel Disaster Recovery si portano come tipi interi */
+  app.get('/api/terraform-types', async () => TERRAFORM_TYPES);
 
   /** Elenco degli oggetti di un tipo su un ambiente */
   app.get('/api/environments/:envId/objects/:type', async (req) => {

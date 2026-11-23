@@ -121,6 +121,8 @@ export function selectResources(
   cfg: TfJson,
   items: PortItem[],
   match?: Map<PortItem, Record<string, string>>,
+  /** Tipi Terraform da tenere interi (tipi generici del Disaster Recovery) */
+  keepTypes?: Set<string>,
 ): Map<PortItem, string> {
   const found = new Map<PortItem, string>();
   for (const it of items) {
@@ -129,6 +131,7 @@ export function selectResources(
   }
   const keep = new Set(found.values());
   for (const [type, labels] of Object.entries(cfg.resource ?? {})) {
+    if (keepTypes?.has(type)) continue;
     for (const label of Object.keys(labels)) {
       if (!keep.has(`${type}.${label}`)) delete labels[label];
     }

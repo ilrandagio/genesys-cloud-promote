@@ -149,6 +149,9 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
   const [analyzing, setAnalyzing] = useState(false);
   /** Disaster Recovery: tipi scelti (tutti gli oggetti o solo alcuni) e oggetti risultanti */
   const [drSelection, setDrSelection] = useSessionState<TypeSelection>(ns + 'drSelection', {});
+  /** Disaster Recovery: risorse del provider fuori dal catalogo, portate come tipi interi */
+  const [drGeneric, setDrGeneric] = useSessionState<string[]>(ns + 'drGeneric', []);
+  const genericTypes = dr ? drGeneric : [];
   const [drResolved, setDrResolved] = useState<{ objects: GcObject[]; loading: ObjectType[] }>({ objects: [], loading: [] });
   const [submitting, setSubmitting] = useState(false);
 
@@ -187,6 +190,14 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
   const step = !sourceId || !targetId ? 0 : !trees ? 1 : 2;
 
   const analyze = async (objs: GcObject[] = [...selected.values()]) => {
+    // Disaster Recovery con soli tipi generici: niente albero da analizzare
+    if (!objs.length) {
+      setActions(new Map());
+      setTrees([]);
+      setWarnings([]);
+      setPlan(undefined);
+      return;
+    }
     setAnalyzing(true);
     try {
       const res = await api<{ trees: DependencyNode[]; warnings?: string[] }>('/api/analyze', {
@@ -319,8 +330,9 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
         sourceId,
         targetId,
         [...items].sort((a, b) => keyOf(a).localeCompare(keyOf(b))).map((i) => [keyOf(i), i.action, i.targetId ?? '', i.targetSettings ?? null, i.includeRows ?? false, i.dropUnavailablePermissions ?? false, i.allowReplace ?? false]),
+        [...genericTypes].sort(),
       ]),
-    [sourceId, targetId, items],
+    [sourceId, targetId, items, genericTypes],
   );
   const planIsCurrent = !!plan && plan.fingerprint === fingerprint;
 
@@ -364,7 +376,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
     try {
       const job = await api<{ id: string }>('/api/jobs', {
         method: 'POST',
-        body: { sourceEnvId: sourceId, targetEnvId: targetId, items, edges },
+        body: { sourceEnvId: sourceId, targetEnvId: targetId, items, edges, terraformTypes: genericTypes },
       });
       setPlan({ jobId: job.id, fingerprint });
       setPlanOpen(true);
@@ -452,11 +464,11 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
               <Button
                 type="primary"
                 icon={<BranchesOutlined />}
-                disabled={!drResolved.objects.length || drResolved.loading.length > 0}
+                disabled={(!drResolved.objects.length && !drGeneric.length) || drResolved.loading.length > 0}
                 loading={analyzing}
                 onClick={() => analyze(drResolved.objects)}
               >
-                Analizza dipendenze
+                {drResolved.objects.length ? 'Analizza dipendenze' : 'Continua'}
               </Button>
             </Space>
           }
@@ -476,6 +488,11 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
               resetAnalysis();
             }}
             onResolved={setDrResolved}
+            generic={drGeneric}
+            onGenericChange={(v) => {
+              setDrGeneric(v);
+              resetAnalysis();
+            }}
           />
         </Card>
       )}
@@ -662,7 +679,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
                   type="primary"
                   icon={<ExperimentOutlined />}
                   loading={submitting}
-                  disabled={!counts.port || settingsMissing.length > 0}
+                  disabled={(!counts.port && !genericTypes.length) || settingsMissing.length > 0}
                   onClick={simulate}
                 >
                   Simula (plan)
@@ -676,7 +693,22 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
               <Tag color="red">Da portare: {counts.port}</Tag>
               <Tag color="orange">Sovrascritture: {counts.overwrite}</Tag>
               <Tag>Oggetti distinti: {items.length}</Tag>
+              {genericTypes.length > 0 && <Tag color="blue">Tipi Terraform interi: {genericTypes.length}</Tag>}
             </Space>
+            {genericTypes.length > 0 && (
+              <Alert
+                type="info"
+                showIcon
+                message={`${genericTypes.length} tipi Terraform portati interi`}
+                description={
+                  <>
+                    Tutti gli oggetti di questi tipi vengono esportati dal sorgente e abbinati al target per nome: quelli presenti
+                    vengono aggiornati, gli altri creati. Il conteggio e gli avvisi (valori legati all'ambiente, ID senza
+                    corrispondenza, segreti) sono nella simulazione. <Typography.Text type="secondary">{genericTypes.join(', ')}</Typography.Text>
+                  </>
+                }
+              />
+            )}
             {!!targetValues.data?.errors.length && (
               <Alert
                 type="warning"

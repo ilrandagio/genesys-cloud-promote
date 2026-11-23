@@ -49,6 +49,33 @@ async function consumersOfReplaced(
   return out;
 }
 
+/** Scripts esistenti sul target da aggiornare: nessun altro Script deve avere lo stesso nome */
+async function checkDuplicateScripts(items: PortItem[], target: GenesysClient, info: (l: string) => void) {
+  const updates = items.filter((i) => i.type === 'script' && i.action === 'port' && i.targetId);
+  const dup: string[] = [];
+  for (const it of updates) {
+    const found = await target.listAll<{ id: string; name: string; modifiedDate?: string }>(
+      CATALOG.script.listPath,
+      `&name=${encodeURIComponent(it.name)}`,
+    );
+    const same = found.filter((s) => s.name === it.name);
+    if (same.length > 1) {
+      dup.push(
+        `"${it.name}": ${same.length} Scripts con questo nome sul target (ID ${same.map((s) => s.id).join(', ')}; ` +
+          `quello aggiornato sarebbe ${it.targetId})`,
+      );
+    }
+  }
+  if (dup.length) {
+    throw new Error(
+      `Scripts con nome duplicato sul target: ${dup.join('; ')}. Il provider Terraform cerca lo Script per nome dopo ` +
+        `averlo caricato e si ferma se ne trova più di uno (problema noto del provider). Rinominare o eliminare sul ` +
+        `target le copie non usate, poi rifare l'analisi e la simulazione.`,
+    );
+  }
+  if (updates.length) info(`Scripts da aggiornare senza nomi duplicati sul target: ${updates.length}`);
+}
+
 /** Voci TTS dei Flows da portare, lette dai loro file YAML esportati */
 async function voicesOfFlows(cfg: TfJson, addresses: Map<PortItem, string>, baseDir: string): Promise<FlowVoice[]> {
   const out: FlowVoice[] = [];
@@ -278,6 +305,11 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
         `Il percorso è rimasto una variabile da compilare: l'oggetto non può essere portato con questo export.`,
     );
   }
+
+  // Pre-controllo: Scripts da aggiornare con lo stesso nome di altri Scripts sul target. Il provider, dopo il
+  // caricamento, ricerca lo Script per nome e fallisce se ne trova più di uno ("more than one script found
+  // with name"): l'aggiornamento si interromperebbe in esecuzione
+  await checkDuplicateScripts([...addresses.keys()], new GenesysClient(targetEnv), log.info);
 
   // Pre-controllo: voci TTS dei Flows portati disponibili sul target (altrimenti la pubblicazione fallisce)
   const voiceWarnings = await checkFlowVoices(

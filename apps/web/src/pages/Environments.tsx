@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
 import { useState } from 'react';
 import { api, type Environment } from '../api/client';
+import BotMappingsModal from '../components/BotMappingsModal';
 
 /** Il nome non si inserisce: lo restituisce il backend leggendolo dall'org Genesys */
 type FormValues = Omit<Environment, 'id' | 'name'> & { clientSecret?: string };
@@ -12,6 +13,7 @@ export default function EnvironmentsPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Environment | 'new' | null>(null);
   const [form] = Form.useForm<FormValues>();
+  const [botsOf, setBotsOf] = useState<Environment | null>(null);
 
   const envs = useQuery({ queryKey: ['environments'], queryFn: () => api<Environment[]>('/api/environments') });
   const regions = useQuery({ queryKey: ['regions'], queryFn: () => api<string[]>('/api/regions') });
@@ -92,6 +94,11 @@ export default function EnvironmentsPage() {
                 <Button size="small" onClick={() => open(env)}>
                   Modifica
                 </Button>
+                {env.allowAsTarget && (
+                  <Button size="small" onClick={() => setBotsOf(env)}>
+                    Bot Connector{env.botMappings?.length ? ` (${env.botMappings.length})` : ''}
+                  </Button>
+                )}
                 <Popconfirm title="Eliminare l'ambiente?" onConfirm={() => remove(env)}>
                   <Button size="small" danger>
                     Elimina
@@ -102,6 +109,8 @@ export default function EnvironmentsPage() {
           },
         ]}
       />
+
+      <BotMappingsModal env={botsOf} onClose={() => setBotsOf(null)} />
 
       <Modal
         open={editing !== null}

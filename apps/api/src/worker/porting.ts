@@ -141,6 +141,7 @@ import {
   type TfJson,
 } from './exportConfig.js';
 import { runBackup } from './backup.js';
+import { applyBotMappings, checkBotRefs } from './botConnector.js';
 import { exportObjects } from './exporter.js';
 import { checkExportVariables, matchGenericOnTarget, resourceExists, stateIds, unresolvedGenericIds } from './generic.js';
 import {
@@ -322,6 +323,14 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // with name"): l'aggiornamento si interromperebbe in esecuzione
   await checkDuplicateScripts([...addresses.keys()], new GenesysClient(targetEnv), log.info);
 
+  // Bot Connector: integration, bot e versione citati dai Flows (azioni Call Bot Connector) sostituiti con le
+  // regole dell'ambiente target e verificati sul target (altrimenti la pubblicazione fallirebbe)
+  const botWarnings = await checkBotRefs(
+    await applyBotMappings(cfg, addresses, path.dirname(cfgPath), targetEnv.botMappings ?? [], log.info),
+    new GenesysClient(targetEnv),
+    log.info,
+  );
+
   // Pre-controllo: voci TTS dei Flows portati disponibili sul target (altrimenti la pubblicazione fallisce)
   const voiceWarnings = await checkFlowVoices(
     await voicesOfFlows(cfg, addresses, path.dirname(cfgPath)),
@@ -404,6 +413,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // Roles: permessi che il target non ha (licenze diverse) → errore, oppure tolti se richiesto
   const planWarnings = [
     ...voiceWarnings,
+    ...botWarnings,
     ...(await filterRolePermissions(cfg, addresses, targetClient, log.info)),
     ...generic.warnings,
   ];

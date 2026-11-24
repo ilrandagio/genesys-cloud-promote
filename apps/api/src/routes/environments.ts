@@ -8,6 +8,19 @@ import { db, schema } from '../lib/db.js';
 import { randomUUID } from 'node:crypto';
 import { getEnvironment, HttpError } from '../lib/repo.js';
 import { requireAuth } from './auth.js';
+import { listBotConnectors } from '../worker/botConnector.js';
+
+const opt = z.string().trim().max(200).optional();
+const botMappingsInput = z.array(
+  z.object({
+    integration: opt,
+    sourceBot: z.string().trim().min(1, 'Bot sorgente obbligatorio').max(200),
+    sourceVersion: opt,
+    targetIntegration: opt,
+    targetBot: opt,
+    targetVersion: opt,
+  }),
+);
 
 /** Il nome non si inserisce: viene letto dall'org Genesys con le credenziali fornite */
 const envInput = z.object({
@@ -28,6 +41,7 @@ const publicFields = {
   clientId: t.clientId,
   allowAsTarget: t.allowAsTarget,
   requireApproval: t.requireApproval,
+  botMappings: t.botMappings,
   createdAt: t.createdAt,
 };
 
@@ -111,6 +125,32 @@ export async function environmentRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     await db.delete(t).where(eq(t.id, id));
     return { ok: true };
+  });
+
+  /** Regole Bot Connector dell'ambiente (usate quando è il target): non richiede di riverificare le credenziali */
+  app.put('/api/environments/:id/bot-mappings', async (req) => {
+    const { id } = req.params as { id: string };
+    await getEnvironment(id);
+    const rules = botMappingsInput.parse(req.body).map((r) =>
+      Object.fromEntries(Object.entries(r).filter(([, v]) => v !== undefined && v !== '')),
+    ) as z.infer<typeof botMappingsInput>;
+    const [row] = await db
+      .update(t)
+      .set({ botMappings: rules.length ? rules : null, updatedAt: new Date() })
+      .where(eq(t.id, id))
+      .returning(publicFields);
+    return row;
+  });
+
+  /** Integrations Bot Connector dell'ambiente con bot e versioni, per proporre i valori */
+  app.get('/api/environments/:id/bot-connectors', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      return await listBotConnectors(new GenesysClient(await getEnvironment(id)));
+    } catch (e) {
+      if (e instanceof HttpError) throw e;
+      return reply.code(400).send({ error: (e as Error).message });
+    }
   });
 
   /** Prova le credenziali OAuth dell'ambiente */

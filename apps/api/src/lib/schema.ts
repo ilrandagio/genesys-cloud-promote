@@ -21,6 +21,16 @@ export interface PlanSummary {
 }
 
 /** Un'organizzazione Genesys Cloud (dev, test, prod...) con il proprio OAuth client. */
+/** Regola Bot Connector: il bot del sorgente (versione vuota = tutte) diventa quello del target (vuoto = invariato) */
+export interface BotMapping {
+  integration?: string;
+  sourceBot: string;
+  sourceVersion?: string;
+  targetIntegration?: string;
+  targetBot?: string;
+  targetVersion?: string;
+}
+
 export const environments = pgTable('environments', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull().unique(),
@@ -33,6 +43,8 @@ export const environments = pgTable('environments', {
   allowAsTarget: boolean('allow_as_target').notNull().default(true),
   /** Ambiente protetto: i plan verso questo target vanno approvati da una persona diversa da chi li ha creati */
   requireApproval: boolean('require_approval').notNull().default(false),
+  /** Come target: sostituzioni di integration, bot e versione nelle azioni Bot Connector dei Flows portati */
+  botMappings: jsonb('bot_mappings').$type<BotMapping[]>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

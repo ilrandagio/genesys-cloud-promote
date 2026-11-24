@@ -57,6 +57,23 @@ export interface Environment {
   allowAsTarget: boolean;
   /** Ambiente protetto: i plan richiedono l'approvazione di una seconda persona */
   requireApproval: boolean;
+  /** Come target: sostituzioni di integration, bot e versione nelle azioni Bot Connector dei Flows */
+  botMappings?: BotMapping[] | null;
+}
+
+export interface BotMapping {
+  integration?: string;
+  sourceBot: string;
+  sourceVersion?: string;
+  targetIntegration?: string;
+  targetBot?: string;
+  targetVersion?: string;
+}
+
+export interface BotConnectorInfo {
+  integration: string;
+  bots: { name: string; versions: string[] }[];
+  error?: string;
 }
 
 export interface Me {

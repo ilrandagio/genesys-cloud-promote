@@ -4,6 +4,7 @@ import { Alert, App, Button, Card, Form, Input, Modal, Popconfirm, Select, Space
 import { useState } from 'react';
 import { api, type Environment } from '../api/client';
 import BotMappingsModal from '../components/BotMappingsModal';
+import { sortBy } from '../components/StatusTag';
 
 /** Il nome non si inserisce: lo restituisce il backend leggendolo dall'org Genesys */
 type FormValues = Omit<Environment, 'id' | 'name'> & { clientSecret?: string };
@@ -71,7 +72,7 @@ export default function EnvironmentsPage() {
         dataSource={envs.data}
         pagination={false}
         columns={[
-          { title: 'Nome', dataIndex: 'name' },
+          { title: 'Nome', dataIndex: 'name', ...sortBy<Environment>((e) => e.name) },
           { title: 'Regione', dataIndex: 'region' },
           { title: 'OAuth client ID', dataIndex: 'clientId', render: (v: string) => <code>{v}</code> },
           {

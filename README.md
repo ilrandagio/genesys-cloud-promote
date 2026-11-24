@@ -46,6 +46,8 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
    salvato cifrato sul server (`BACKUP_DIR`, volume `backups` con Docker) e si scarica dalla pagina del backup; si
    conservano gli ultimi `BACKUP_KEEP` (predefinito 30). Nessuna simulazione né approvazione: non scrive sulle org.
 7. **Tema chiaro, scuro o come il sistema**, dal pulsante nell'intestazione; la scelta resta salvata nel browser.
+8. **Ordinamento delle tabelle** per nome e per tipo (anche insieme: il tipo raggruppa, il nome ordina dentro il
+   gruppo), cliccando sull'intestazione della colonna; vale anche per l'albero dell'analisi.
 
 ## Tipi supportati
 

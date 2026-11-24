@@ -37,7 +37,7 @@ import {
 import JobView from '../components/JobView';
 import DiffModal from '../components/DiffModal';
 import TargetSettingsEditor, { missingSettings, proposeSettings, settingsValid } from '../components/TargetSettingsEditor';
-import { flowTypeLabel, TargetStatusTag, typeLabel } from '../components/StatusTag';
+import { flowTypeLabel, sortBy, TargetStatusTag, typeLabel } from '../components/StatusTag';
 import TypeObjectSelection, { type TypeSelection } from '../components/TypeObjectSelection';
 import { mapCodec, useSessionState } from '../hooks/useSessionState';
 
@@ -628,11 +628,11 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
               },
             }}
             columns={[
-              { title: 'Nome', dataIndex: 'name' },
-              ...(onlySelected ? [{ title: 'Tipo', key: 'type', render: (_: unknown, o: GcObject) => typeLabel(o) }] : []),
+              { title: 'Nome', dataIndex: 'name', ...sortBy<GcObject>((o) => o.name) },
+              ...(onlySelected ? [{ title: 'Tipo', key: 'type', render: (_: unknown, o: GcObject) => typeLabel(o), ...sortBy<GcObject>((o) => typeLabel(o), 2) }] : []),
               ...(!onlySelected && type === 'flow'
                 ? [
-                    { title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t) },
+                    { title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t), ...sortBy<GcObject>((o) => flowTypeLabel(o.subtype), 2) },
                     {
                       title: 'Pubblicato',
                       dataIndex: 'published',
@@ -772,6 +772,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
                 {
                   title: 'Oggetto',
                   dataIndex: 'name',
+                  ...sortBy<TreeRow>((n) => n.name),
                   render: (name: string, n) => (
                     <Space>
                       <Typography.Text strong={n.isRoot} type={n.supported ? undefined : 'secondary'}>
@@ -836,6 +837,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
                 },
                 {
                   title: 'Tipo',
+                  ...sortBy<TreeRow>((n) => (n.supported ? typeLabel(n) : n.rawType), 2),
                   render: (_, n) => (n.supported ? typeLabel(n) : <Tag>{n.rawType}</Tag>),
                   width: 220,
                 },

@@ -126,3 +126,15 @@ export function PlanStateTag({ state }: { state: string }) {
     </Tooltip>
   );
 }
+
+/** Confronto di testi per l'ordinamento delle tabelle: senza maiuscole/accenti, numeri in ordine naturale */
+export const compareText = (a?: string, b?: string) =>
+  (a ?? '').localeCompare(b ?? '', 'it', { sensitivity: 'base', numeric: true });
+
+/**
+ * Ordinamento di una colonna. Con più colonne ordinate insieme (es. Tipo e Nome) vince quella con priorità più
+ * alta: il tipo (2) raggruppa, il nome (1) ordina dentro il gruppo.
+ */
+export const sortBy = <T,>(text: (row: T) => string | undefined, priority = 1) => ({
+  sorter: { compare: (a: T, b: T) => compareText(text(a), text(b)), multiple: priority },
+});

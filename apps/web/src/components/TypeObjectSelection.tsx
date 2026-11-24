@@ -2,7 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { Alert, Badge, Button, Card, Checkbox, Input, Segmented, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { api, type GcObject, type ObjectType } from '../api/client';
-import { flowTypeLabel } from './StatusTag';
+import { flowTypeLabel, sortBy } from './StatusTag';
 
 /** Scelta per tipo: tutti gli oggetti del tipo, oppure solo quelli scelti */
 export interface TypeChoice {
@@ -211,7 +211,7 @@ export default function TypeObjectSelection({
             ),
           },
           { title: 'Gruppo', dataIndex: 'group', width: 180, render: (g: string) => <Typography.Text type="secondary">{g}</Typography.Text> },
-          { title: 'Tipo', dataIndex: 'label' },
+          { title: 'Tipo', dataIndex: 'label', ...sortBy<any>((r) => r.label) },
           {
             title: 'Oggetti sul sorgente',
             width: 170,
@@ -341,9 +341,9 @@ function ObjectPicker({
           },
         }}
         columns={[
-          { title: 'Nome', dataIndex: 'name' },
-          ...(type === 'flow' ? [{ title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t) }] : []),
-          { title: 'Divisione', dataIndex: 'division' },
+          { title: 'Nome', dataIndex: 'name', ...sortBy<any>((o) => o.name) },
+          ...(type === 'flow' ? [{ title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t), ...sortBy<any>((o) => flowTypeLabel(o.subtype), 2) }] : []),
+          { title: 'Divisione', dataIndex: 'division', ...sortBy<any>((o) => (typeof o.division === 'string' ? o.division : o.division?.name)) },
         ]}
       />
     </Space>

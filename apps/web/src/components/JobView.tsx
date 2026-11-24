@@ -4,7 +4,7 @@ import { Alert, App, Button, Card, Descriptions, Space, Table, Tabs, Tag, Toolti
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, appUrl, type JobDetail, type PortItem } from '../api/client';
-import { JobStatusTag, PlanStateTag, sortBy, TargetStatusTag, typeLabel } from './StatusTag';
+import { JobStatusTag, PlanStateTag, filterBy, sortBy, TargetStatusTag, typeLabel } from './StatusTag';
 
 const ACTION_LABEL = { port: 'Porta', reuse: 'Usa target', skip: 'Salta' } as const;
 
@@ -400,7 +400,7 @@ export default function JobView({
                   pagination={false}
                   columns={[
                     { title: 'Oggetto', dataIndex: 'name', ...sortBy<PortItem>((i) => i.name) },
-                    { title: 'Tipo', render: (_, i) => typeLabel(i), ...sortBy<PortItem>((i) => typeLabel(i), 2) },
+                    { title: 'Tipo', render: (_, i) => typeLabel(i), ...sortBy<PortItem>((i) => typeLabel(i), 2), ...filterBy<PortItem>(j.items, (i) => typeLabel(i)) },
                     { title: "Stato target (all'analisi)", dataIndex: 'targetStatus', render: (s) => <TargetStatusTag status={s} /> },
                     {
                       title: 'Azione',

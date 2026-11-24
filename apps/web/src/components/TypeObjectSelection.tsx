@@ -2,7 +2,7 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { Alert, Badge, Button, Card, Checkbox, Input, Segmented, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { api, type GcObject, type ObjectType } from '../api/client';
-import { flowTypeLabel, sortBy } from './StatusTag';
+import { filterBy, flowTypeLabel, sortBy } from './StatusTag';
 
 /** Scelta per tipo: tutti gli oggetti del tipo, oppure solo quelli scelti */
 export interface TypeChoice {
@@ -342,7 +342,7 @@ function ObjectPicker({
         }}
         columns={[
           { title: 'Nome', dataIndex: 'name', ...sortBy<any>((o) => o.name) },
-          ...(type === 'flow' ? [{ title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t), ...sortBy<any>((o) => flowTypeLabel(o.subtype), 2) }] : []),
+          ...(type === 'flow' ? [{ title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t), ...sortBy<any>((o) => flowTypeLabel(o.subtype), 2), ...filterBy<any>(objects, (o) => flowTypeLabel(o.subtype)) }] : []),
           { title: 'Divisione', dataIndex: 'division', ...sortBy<any>((o) => (typeof o.division === 'string' ? o.division : o.division?.name)) },
         ]}
       />

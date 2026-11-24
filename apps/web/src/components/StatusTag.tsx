@@ -138,3 +138,19 @@ export const compareText = (a?: string, b?: string) =>
 export const sortBy = <T,>(text: (row: T) => string | undefined, priority = 1) => ({
   sorter: { compare: (a: T, b: T) => compareText(text(a), text(b)), multiple: priority },
 });
+
+/** Filtro di una colonna: le voci sono i valori presenti nelle righe (con il numero di righe per voce) */
+export const filterBy = <T,>(rows: readonly T[] | undefined, text: (row: T) => string | undefined) => {
+  const counts = new Map<string, number>();
+  for (const r of rows ?? []) {
+    const v = text(r) || '—';
+    counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  return {
+    filters: [...counts]
+      .sort(([a], [b]) => compareText(a, b))
+      .map(([value, n]) => ({ text: `${value} (${n})`, value })),
+    filterSearch: counts.size > 8,
+    onFilter: (value: unknown, row: T) => (text(row) || '—') === value,
+  };
+};

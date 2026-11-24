@@ -37,7 +37,7 @@ import {
 import JobView from '../components/JobView';
 import DiffModal from '../components/DiffModal';
 import TargetSettingsEditor, { missingSettings, proposeSettings, settingsValid } from '../components/TargetSettingsEditor';
-import { flowTypeLabel, sortBy, TargetStatusTag, typeLabel } from '../components/StatusTag';
+import { compareText, filterBy, flowTypeLabel, sortBy, TargetStatusTag, typeLabel } from '../components/StatusTag';
 import TypeObjectSelection, { type TypeSelection } from '../components/TypeObjectSelection';
 import { mapCodec, useSessionState } from '../hooks/useSessionState';
 
@@ -100,6 +100,9 @@ const ACTION_LABELS: Record<PortAction, string> = { port: 'Porta', reuse: 'Usa q
  * Vista filtrata per azione: elenco piatto dei soli oggetti con quell'azione, una riga per oggetto
  * (un oggetto può comparire in più rami dell'albero, ma l'azione è una sola)
  */
+/** Tipo mostrato nell'albero: tipo del catalogo (per i flow con il tipo di flow) o tipo grezzo se non supportato */
+const rowType = (r: TreeRow) => (r.supported ? typeLabel(r) : r.rawType ?? '');
+
 function flatRows(rows: TreeRow[], keep: (r: TreeRow) => boolean): TreeRow[] {
   const out = new Map<string, TreeRow>();
   const walk = (r: TreeRow) => {
@@ -143,6 +146,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
   const [allowReplace, setAllowReplace] = useSessionState<Map<string, boolean>>(ns + 'allowReplace', new Map(), mapCodec());
   const [dropPermissions, setDropPermissions] = useSessionState<Map<string, boolean>>(ns + 'dropPermissions', new Map(), mapCodec());
   const [actionFilter, setActionFilter] = useSessionState<PortAction | 'all'>(ns + 'actionFilter', 'all');
+  const [typeFilter, setTypeFilter] = useSessionState<string[]>(ns + 'typeFilter', []);
   /** Ultima simulazione, con l'impronta delle scelte da cui è stata generata */
   const [plan, setPlan] = useSessionState<{ jobId: string; fingerprint: string } | undefined>(ns + 'plan', undefined);
   const [planOpen, setPlanOpen] = useState(false);
@@ -305,6 +309,18 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
     trees?.forEach(walk);
     return [...out.values()];
   }, [trees, actions, targetSettings, datatableRows, dropPermissions, allowReplace]);
+
+  /** Tipi presenti nell'albero, con il numero di oggetti distinti, per il filtro per tipo */
+  const treeTypes = useMemo(() => {
+    const seen = new Map<string, Set<string>>();
+    const walk = (n: DependencyNode) => {
+      const t = rowType(n as unknown as TreeRow);
+      if (t) seen.set(t, (seen.get(t) ?? new Set()).add(keyOf(n)));
+      n.children.forEach(walk);
+    };
+    trees?.forEach(walk);
+    return [...seen].map(([t, keys]) => [t, keys.size] as const).sort(([a], [b]) => compareText(a, b));
+  }, [trees]);
 
   /** Archi dell'albero ("from" usa "to"): il server li usa per l'ordine di creazione (depends_on) */
   const edges = useMemo(() => {
@@ -629,10 +645,10 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
             }}
             columns={[
               { title: 'Nome', dataIndex: 'name', ...sortBy<GcObject>((o) => o.name) },
-              ...(onlySelected ? [{ title: 'Tipo', key: 'type', render: (_: unknown, o: GcObject) => typeLabel(o), ...sortBy<GcObject>((o) => typeLabel(o), 2) }] : []),
+              ...(onlySelected ? [{ title: 'Tipo', key: 'type', render: (_: unknown, o: GcObject) => typeLabel(o), ...sortBy<GcObject>((o) => typeLabel(o), 2), ...filterBy<GcObject>(filtered, (o) => typeLabel(o)) }] : []),
               ...(!onlySelected && type === 'flow'
                 ? [
-                    { title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t), ...sortBy<GcObject>((o) => flowTypeLabel(o.subtype), 2) },
+                    { title: 'Tipo flow', dataIndex: 'subtype', render: (t: string) => flowTypeLabel(t), ...sortBy<GcObject>((o) => flowTypeLabel(o.subtype), 2), ...filterBy<GcObject>(filtered, (o) => flowTypeLabel(o.subtype)) },
                     {
                       title: 'Pubblicato',
                       dataIndex: 'published',
@@ -671,6 +687,16 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
                     label: `Mostra: ${ACTION_LABELS[a]} (${items.filter((i) => i.action === a).length})`,
                   })),
                 ]}
+              />
+              <Select<string[]>
+                mode="multiple"
+                allowClear
+                maxTagCount="responsive"
+                style={{ minWidth: 220, maxWidth: 420 }}
+                placeholder="Filtra per tipo"
+                value={typeFilter}
+                onChange={setTypeFilter}
+                options={treeTypes.map(([t, n]) => ({ value: t, label: `${t} (${n})` }))}
               />
               <Tooltip
                 title={settingsMissing.length ? `Scegliere sul target: ${settingsMissing.join('; ')}` : undefined}
@@ -757,16 +783,30 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
               rowKey="rowKey"
               pagination={false}
               // key: con un filtro diverso l'albero si riapre tutto espanso
-              key={actionFilter}
+              key={`${actionFilter}|${typeFilter.join(',')}`}
               dataSource={(() => {
                 const rows = trees.map((t) => toRows(t, '', true));
-                if (actionFilter === 'all') return rows;
+                if (actionFilter === 'all' && !typeFilter.length) return rows;
+                // Con un filtro l'albero diventa un elenco: ogni oggetto una volta sola
                 return flatRows(
                   rows,
-                  (r) => r.supported && !r.repeated && !!r.target && effectiveAction(r as DependencyNode, actions.get(keyOf(r))) === actionFilter,
+                  (r) =>
+                    (!typeFilter.length || typeFilter.includes(rowType(r))) &&
+                    (actionFilter === 'all' ||
+                      (r.supported && !r.repeated && !!r.target && effectiveAction(r as DependencyNode, actions.get(keyOf(r))) === actionFilter)),
                 );
               })()}
-              locale={{ emptyText: <Empty description={actionFilter === 'all' ? undefined : `Nessun oggetto con azione "${ACTION_LABELS[actionFilter]}"`} /> }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    description={
+                      actionFilter === 'all' && !typeFilter.length
+                        ? undefined
+                        : `Nessun oggetto${actionFilter === 'all' ? '' : ` con azione "${ACTION_LABELS[actionFilter]}"`}${typeFilter.length ? ` di tipo ${typeFilter.join(', ')}` : ''}`
+                    }
+                  />
+                ),
+              }}
               expandable={{ defaultExpandAllRows: true }}
               columns={[
                 {
@@ -837,7 +877,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
                 },
                 {
                   title: 'Tipo',
-                  ...sortBy<TreeRow>((n) => (n.supported ? typeLabel(n) : n.rawType), 2),
+                  ...sortBy<TreeRow>(rowType, 2),
                   render: (_, n) => (n.supported ? typeLabel(n) : <Tag>{n.rawType}</Tag>),
                   width: 220,
                 },

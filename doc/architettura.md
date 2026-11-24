@@ -66,7 +66,7 @@ Ogni rilascio passa da una simulazione salvata; l'esecuzione la applica una sola
 
 | Componente | Tecnologia | Responsabilità |
 | --- | --- | --- |
-| Interfaccia web | React, Vite, TypeScript, Ant Design, TanStack Query | Login, ambienti, wizard di porting con albero delle dipendenze, plan, storico; tabelle ordinabili per nome e tipo |
+| Interfaccia web | React, Vite, TypeScript, Ant Design, TanStack Query | Login, ambienti, wizard di porting con albero delle dipendenze, plan, storico; tabelle ordinabili per nome e tipo e filtrabili per tipo |
 | API | Node.js 22, Fastify, TypeScript | Autenticazione, permessi, ambienti, analisi delle dipendenze, gestione dei job |
 | Worker | Node.js, BullMQ (in locale: coda interna) | Esecuzione di simulazioni ed esecuzioni, un job alla volta |
 | Motore di porting | Terraform + provider CX as Code `mypurecloud/genesyscloud` | Export dal sorgente, plan salvato, apply del plan sul target |

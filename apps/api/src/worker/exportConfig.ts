@@ -97,12 +97,12 @@ export function includeFilter(item: PortItem): string {
 export function findAddress(cfg: TfJson, item: PortItem, match?: Record<string, string>): string | undefined {
   const tfType = CATALOG[item.type].tfType;
   const resources = cfg.resource?.[tfType] ?? {};
+  if (item.type === 'flow') return findFlowAddress(tfType, resources, item);
   const byName: string[] = [];
   for (const [label, attrs] of Object.entries(resources)) {
     const nameAttr = typeof attrs?.name === 'string' ? attrs.name : undefined;
     const labelMatch =
-      simplify(label) === simplify(item.name) ||
-      (item.type === 'flow' && !!item.subtype && simplify(label) === simplify(`${item.subtype}_${item.name}`));
+      simplify(label) === simplify(item.name);
     if (!(nameAttr ? nameAttr.toLowerCase() === item.name.toLowerCase() : labelMatch)) continue;
     // Attributi che distinguono gli omonimi (es. integration_id per Data Actions con lo stesso nome)
     const same = Object.entries(match ?? {}).every(([k, v]) => String(attrs?.[k] ?? '').toLowerCase() === v.toLowerCase());
@@ -111,6 +111,28 @@ export function findAddress(cfg: TfJson, item: PortItem, match?: Record<string, 
   }
   // Un solo omonimo ma attributo diverso (es. integration_id scritto come riferimento): è comunque quello
   return byName.length === 1 ? `${tfType}.${byName[0]}` : undefined;
+}
+
+/**
+ * Flows: lo stesso nome può esistere per tipi diversi (es. un Workflow e un Secure Flow). L'exporter mette il
+ * tipo nell'etichetta (WORKFLOW_Nome, SECURECALL_Nome): con il tipo noto si accetta solo l'etichetta che lo
+ * contiene, mai quella di un omonimo di un altro tipo. Senza tipo, solo se il nome è univoco.
+ */
+function findFlowAddress(tfType: string, resources: Record<string, any>, item: PortItem): string | undefined {
+  const name = simplify(item.name);
+  const sub = item.subtype ? simplify(item.subtype) : '';
+  const labels = Object.keys(resources);
+  if (sub) {
+    const typed = labels.filter((l) => simplify(l) === sub + name || simplify(l) === name + sub);
+    if (typed.length === 1) return `${tfType}.${typed[0]}`;
+    if (typed.length > 1) return undefined;
+    // Etichetta senza tipo: accettata solo se non esiste un omonimo con un altro tipo nell'etichetta
+    const plain = labels.filter((l) => simplify(l) === name);
+    const otherTyped = labels.some((l) => simplify(l) !== name && simplify(l).endsWith(name) && simplify(l) !== sub + name);
+    return plain.length === 1 && !otherTyped ? `${tfType}.${plain[0]}` : undefined;
+  }
+  const any = labels.filter((l) => simplify(l) === name || simplify(l).endsWith(name));
+  return any.length === 1 ? `${tfType}.${any[0]}` : undefined;
 }
 
 /**

@@ -141,6 +141,8 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
     Nei **flow** i riferimenti sono per nome: vale il nome esatto di qualunque tipo di oggetto (anche come chiave di
     un blocco, es. il nome della data action), i prompt nella forma `Prompt.<nome>`; le espressioni Architect
     (`Flow.`, `Task.`, `State.`…) sono ignorate. Nell'albero questi nodi hanno il tag "per nome".
+    Flow omonimi di tipo diverso (es. Workflow e Secure Flow) restano distinti: l'omonimo trovato solo per nome è
+    scartato se lo stesso nome è già stato trovato per ID, e nell'export si sceglie l'etichetta con il tipo (`WORKFLOW_<nome>`).
     Negli **script** il nome vale solo se univoco e per data action, data table, flow, emergency group e schedule group;
   - nel porting i riferimenti per nome dei flow non vengono modificati: sul target si risolvono per nome,
     basta che gli oggetti esistano con lo stesso nome;

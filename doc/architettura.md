@@ -130,7 +130,7 @@ L'analisi legge direttamente la Platform API (nessuno stato, nessuna scrittura) 
 **Riconoscimento dei riferimenti.** Nel testo di una configurazione si cercano:
 
 1. **ID**, anche con prefisso (`custom_-_<guid>` delle data action), confrontati con un indice degli oggetti dell'org sorgente costruito una volta per analisi;
-2. **nomi esatti**: nei flow i riferimenti sono per nome, quindi vale qualunque tipo, anche come chiave di un blocco e nella forma `Prompt.<nome>`; le espressioni Architect (`Flow.`, `Task.`, `State.`…) sono ignorate. Negli script il nome vale solo se univoco e per i tipi principali.
+2. **nomi esatti**: nei flow i riferimenti sono per nome, quindi vale qualunque tipo, anche come chiave di un blocco e nella forma `Prompt.<nome>`; le espressioni Architect (`Flow.`, `Task.`, `State.`…) sono ignorate. Negli script il nome vale solo se univoco e per i tipi principali. Due oggetti con lo stesso nome e tipo diverso (es. un Workflow e un Secure Flow) non si confondono: un omonimo trovato solo per nome viene scartato se lo stesso nome è già stato trovato con certezza (Dependency Tracking API o ID nella configurazione), e nell'export Terraform il flow viene scelto dall'etichetta che contiene il tipo (`WORKFLOW_<nome>`, `SECURECALL_<nome>`), mai da quella di un omonimo di un altro tipo.
 
 Gli ID interni (pagine, componenti, task, azioni, variabili) e l'oggetto stesso non sono mai dipendenze.
 

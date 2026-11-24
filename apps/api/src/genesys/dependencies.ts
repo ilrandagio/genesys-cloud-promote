@@ -214,6 +214,21 @@ function scanReferences(value: unknown, index: IdIndex, self: GcObjectRef, mode:
 }
 
 /**
+ * Omonimi trovati solo per nome: se un oggetto dello stesso tipo e con lo stesso nome è già stato trovato con
+ * certezza (Dependency Tracking API o ID nella configurazione), quello per nome è lui e gli altri omonimi no.
+ * Esempio: un Workflow e un Secure Flow con lo stesso nome; il flow usa il Workflow, la Dependency Tracking lo
+ * riporta, e il Secure Flow omonimo non deve diventare una dipendenza.
+ */
+export function dropNameTwins(deps: RawDep[]): RawDep[] {
+  const byName = (d: RawDep) => d.rawType.endsWith('(per nome)');
+  const confirmed = deps.filter((d) => !byName(d));
+  const same = (a: RawDep, b: RawDep) => a.type === b.type && a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
+  return deps.filter(
+    (d) => !byName(d) || !confirmed.some((c) => same(c, d) && idKey(c.id) !== idKey(d.id)),
+  );
+}
+
+/**
  * Risolve le dipendenze dirette di un oggetto sul sorgente.
  * - Flow: Dependency Tracking API + ID trovati nella configurazione del flow (unione delle due).
  * - Script: ID trovati nel JSON esportato.
@@ -309,7 +324,7 @@ async function directDependencies(
       }
 
       if (!deps.length && problems.length) throw new DependencyReadError(problems.join('\n'));
-      return deps;
+      return dropNameTwins(deps);
     }
 
     case 'queue': {

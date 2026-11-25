@@ -142,7 +142,6 @@ import {
 } from './exportConfig.js';
 import { runBackup } from './backup.js';
 import { applyBotMappings, checkBotRefs } from './botConnector.js';
-import { applyFlowNameFixes, targetNameFixes } from './flowNames.js';
 import { exportObjects } from './exporter.js';
 import { checkExportVariables, matchGenericOnTarget, resourceExists, stateIds, unresolvedGenericIds } from './generic.js';
 import {
@@ -324,20 +323,6 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   // with name"): l'aggiornamento si interromperebbe in esecuzione
   await checkDuplicateScripts([...addresses.keys()], new GenesysClient(targetEnv), log.info);
 
-  // Nomi scritti diversamente sul target (spazi finali, maiuscole): i Flows citano gli oggetti per nome esatto
-  const nameFixes = await targetNameFixes(items, new GenesysClient(targetEnv), log.info);
-  const fixedFlows = await applyFlowNameFixes(cfg, addresses, path.dirname(cfgPath), nameFixes);
-  if (fixedFlows) log.info(`Flows con nomi corretti per il target: ${fixedFlows}`);
-  const spacedNames = toExport
-    .filter((i) => !i.targetId && i.name !== i.name.trim())
-    .map((i) => `${CATALOG[i.type].label} "${i.name}"`);
-  const nameWarnings = spacedNames.length
-    ? [
-        `Oggetti da creare con spazi all'inizio o alla fine del nome: ${spacedNames.join(', ')}. ` +
-          `Se Genesys li salva senza spazi, i Flows che li citano non li troverebbero: meglio correggere il nome sul sorgente.`,
-      ]
-    : [];
-
   // Bot Connector: integration, bot e versione citati dai Flows (azioni Call Bot Connector) sostituiti con le
   // regole dell'ambiente target e verificati sul target (altrimenti la pubblicazione fallirebbe)
   const botWarnings = await checkBotRefs(
@@ -392,7 +377,7 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
       if (!byType.has(it.type)) byType.set(it.type, await listObjects(targetClient, it.type).catch(() => []));
       const hit = byType.get(it.type)!.find(
         (o) =>
-          String(o.name ?? '').trim().toLowerCase() === it.name.trim().toLowerCase() &&
+          String(o.name ?? '').toLowerCase() === it.name.toLowerCase() &&
           (it.type !== 'flow' || !it.subtype || String(o.type ?? '').toLowerCase() === it.subtype.toLowerCase()),
       );
       if (hit) nowPresent.push(`${CATALOG[it.type].label} "${it.name}"`);
@@ -429,7 +414,6 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
   const planWarnings = [
     ...voiceWarnings,
     ...botWarnings,
-    ...nameWarnings,
     ...(await filterRolePermissions(cfg, addresses, targetClient, log.info)),
     ...generic.warnings,
   ];
@@ -817,11 +801,11 @@ async function mapDivisionsByName(
     info(`ATTENZIONE: divisioni non leggibili, nessuna rimappatura automatica (${e.message})`);
     return [];
   }
-  const byName = new Map(tgt.map((d) => [d.name.trim().toLowerCase(), d.id]));
+  const byName = new Map(tgt.map((d) => [d.name.toLowerCase(), d.id]));
   const missing: { id: string; name: string }[] = [];
   for (const d of src) {
     if (idMap.has(d.id.toLowerCase())) continue;
-    const targetId = byName.get(d.name.trim().toLowerCase());
+    const targetId = byName.get(d.name.toLowerCase());
     if (targetId) idMap.set(d.id.toLowerCase(), targetId);
     else missing.push(d);
   }

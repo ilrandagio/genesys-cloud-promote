@@ -124,7 +124,8 @@ export class TargetComparer {
     const candidates = await this.cached(this.targetLists, this.target, obj.type);
     const match = candidates.find(
       (c) =>
-        c.name?.toLowerCase() === obj.name.toLowerCase() &&
+        // Spazi iniziali e finali ignorati: "Schedule X " sul sorgente è "Schedule X" sul target
+        String(c.name ?? '').trim().toLowerCase() === obj.name.trim().toLowerCase() &&
         (obj.type !== 'flow' || !obj.subtype || c.type?.toUpperCase() === obj.subtype.toUpperCase()),
     );
     if (!match) return { status: 'missing', divisionMissing };

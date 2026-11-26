@@ -75,7 +75,8 @@ export default function DiffModal({ open, onClose, name, type, sourceEnvId, targ
   const lines = useMemo(
     () =>
       q.data
-        ? buildLines(JSON.stringify(q.data.source, null, 2), JSON.stringify(q.data.target, null, 2), all)
+        ? // Dal target al sorgente, come lo cambierebbe il porting: + portato sul target, - tolto dal target
+          buildLines(JSON.stringify(q.data.target, null, 2), JSON.stringify(q.data.source, null, 2), all)
         : [],
     [q.data, all],
   );
@@ -85,8 +86,9 @@ export default function DiffModal({ open, onClose, name, type, sourceEnvId, targ
       <Space direction="vertical" style={{ width: '100%' }}>
         <Typography.Text type="secondary">
           Contenuto confrontato dall'analisi: senza i campi che cambiano sempre tra org (id, date, versione, division),
-          con gli ID sostituiti da "&lt;id&gt;" e le chiavi in ordine alfabetico. <Tag color="red">- sorgente</Tag>
-          <Tag color="green">+ target</Tag>
+          con gli ID sostituiti da "&lt;id&gt;" e le chiavi in ordine alfabetico. Le differenze sono quelle che il porting
+          applicherebbe al target: <Tag color="green">+ portato sul target</Tag>
+          <Tag color="red">- rimosso dal target</Tag>
         </Typography.Text>
         {q.isLoading && <Spin />}
         {q.error && <Alert type="error" showIcon message={(q.error as Error).message} />}

@@ -17,7 +17,8 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
    - **analisi**: albero delle dipendenze di ogni oggetto, con lo stato sul target per ciascun nodo:
      *Mancante*, *Presente uguale*, *Presente diverso* (con l'elenco dei campi diversi, es. `config.request.requestUrlTemplate`),
      *Presente* (esiste, contenuto non confrontato: i flow). L'icona *Differenze* apre il confronto riga per riga tra sorgente
-     e target, sullo stesso contenuto normalizzato usato dall'analisi;
+     e target, sullo stesso contenuto normalizzato usato dall'analisi, nel verso del porting: `+` righe portate sul
+     target, `-` righe rimosse dal target;
    - per ogni oggetto si sceglie **Porta** (crea o sovrascrive) oppure, in alternativa, **Usa quella del target** se
      l'oggetto esiste già sul target, **Salta** se manca (i riferimenti a quell'oggetto restano scoperti);
      accanto a *Simula* un filtro mostra l'elenco dei soli oggetti con una certa azione;

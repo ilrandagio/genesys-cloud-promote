@@ -26,6 +26,8 @@ services:
       REDIS_URL: redis://redis:6379
       APP_URL: ${APP_URL:-http://localhost:8080}
       CORS_ORIGIN: ${APP_URL:-http://localhost:8080}
+      # Porta interna fissa: nginx inoltra ad api:3000 (PORT del .env vale solo per lo sviluppo in locale)
+      PORT: "3000"
       BACKUP_DIR: /data/backups
     volumes:
       - backups:/data/backups

@@ -460,6 +460,7 @@ usarlo. Oltre al backup del database va conservato il `.env`, in particolare `EN
 
 | Sintomo | Causa | Soluzione |
 | --- | --- | --- |
+| Pagina "Not Found" su `localhost:5173/api/...` in sviluppo | L'api non è partita o la porta 3000 è di un'altra applicazione | `PORT=<porta libera>` nel `.env` (api e proxy di Vite la leggono entrambi), poi rilanciare `npm run dev` |
 | `address already in use` all'avvio di `web` | La porta `WEB_PORT` è usata da un altro programma | Scegliere una porta libera (`sudo ss -ltnp \| grep :<porta>`) |
 | `api` e `worker` in `Restarting`, nel log `ZodError` | Variabile del `.env` mancante o non valida (indicata in `path`) | Correggere il `.env`, poi `sudo docker compose up -d` |
 | *Service Unavailable* dal Koa | Il Koa non raggiunge `127.0.0.1:<WEB_PORT>` | Controllare `WEB_BIND=127.0.0.1`, `WEB_PORT` e la destinazione del proxy |

@@ -1,4 +1,5 @@
 import {
+  ApartmentOutlined,
   CloudServerOutlined,
   DesktopOutlined,
   HistoryOutlined,
@@ -13,7 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Dropdown, Layout, Menu, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { api, type Me } from './api/client';
+import { api, appUrl, type LoginOrg, type Me } from './api/client';
 import EnvironmentsPage from './pages/Environments';
 import JobDetailPage from './pages/JobDetail';
 import JobsPage from './pages/Jobs';
@@ -32,6 +33,12 @@ export default function App() {
   const me = useQuery({
     queryKey: ['me'],
     queryFn: () => api<Me>('/api/auth/me'),
+  });
+
+  const orgs = useQuery({
+    queryKey: ['login-orgs'],
+    enabled: me.isSuccess,
+    queryFn: () => api<LoginOrg[]>('/api/auth/orgs'),
   });
 
   if (me.isLoading) return <Spin fullscreen />;
@@ -66,6 +73,28 @@ export default function App() {
           ]}
         />
         <Space>
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              selectable: true,
+              selectedKeys: [me.data?.envId ?? ''],
+              items: [
+                { key: 'title', type: 'group', label: "Cambia org (nuovo login nell'org scelta)" },
+                ...(orgs.data ?? []).map((o) => ({ key: o.envId, label: `${o.name}` })),
+              ],
+              onClick: (e) => {
+                if (e.key === (me.data?.envId ?? '')) return;
+                qc.clear();
+                window.location.href = appUrl(`/api/auth/login${e.key ? `?env=${encodeURIComponent(e.key)}` : ''}`);
+              },
+            }}
+          >
+            <Tooltip title={`Org di login: ${me.data?.org} (${me.data?.orgRegion}). Clic per cambiare org`}>
+              <Tag icon={<ApartmentOutlined />} color="blue" style={{ cursor: 'pointer', marginInlineEnd: 0 }}>
+                {me.data?.org}
+              </Tag>
+            </Tooltip>
+          </Dropdown>
           <Typography.Text style={{ color: '#ccc' }} title={me.data?.username}>
             {me.data?.name}
           </Typography.Text>

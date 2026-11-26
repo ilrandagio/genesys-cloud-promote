@@ -45,6 +45,10 @@ export const environments = pgTable('environments', {
   requireApproval: boolean('require_approval').notNull().default(false),
   /** Come target: sostituzioni di integration, bot e versione nelle azioni Bot Connector dei Flows portati */
   botMappings: jsonb('bot_mappings').$type<BotMapping[]>(),
+  /** Login delle persone in questa org (OAuth client Code Authorization): permette di cambiare org dall'app */
+  loginClientId: text('login_client_id'),
+  /** Secret del client di login, cifrato come quello del client dell'ambiente */
+  loginClientSecretEncrypted: text('login_client_secret_encrypted'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

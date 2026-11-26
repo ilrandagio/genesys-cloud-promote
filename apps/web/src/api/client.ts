@@ -59,6 +59,15 @@ export interface Environment {
   requireApproval: boolean;
   /** Come target: sostituzioni di integration, bot e versione nelle azioni Bot Connector dei Flows */
   botMappings?: BotMapping[] | null;
+  /** Client di login delle persone in questa org (Code Authorization) */
+  loginClientId?: string | null;
+}
+
+/** Org in cui si può fare login */
+export interface LoginOrg {
+  envId: string;
+  name: string;
+  region: string;
 }
 
 export interface BotMapping {
@@ -79,7 +88,11 @@ export interface BotConnectorInfo {
 export interface Me {
   username: string;
   name: string;
+  /** Org Genesys in cui si è fatto login */
   org: string;
+  orgRegion: string;
+  /** Ambiente dell'org di login ('' = org predefinita) */
+  envId: string;
   canApply: boolean;
   canApprove: boolean;
 }

@@ -2,12 +2,12 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
 import { useState } from 'react';
-import { api, type Environment } from '../api/client';
+import { api, appUrl, type Environment } from '../api/client';
 import BotMappingsModal from '../components/BotMappingsModal';
 import { sortBy } from '../components/StatusTag';
 
 /** Il nome non si inserisce: lo restituisce il backend leggendolo dall'org Genesys */
-type FormValues = Omit<Environment, 'id' | 'name'> & { clientSecret?: string };
+type FormValues = Omit<Environment, 'id' | 'name'> & { clientSecret?: string; loginClientSecret?: string };
 
 export default function EnvironmentsPage() {
   const { message } = App.useApp();
@@ -82,6 +82,7 @@ export default function EnvironmentsPage() {
               <Space size={4}>
                 {v ? <Tag color="green">sorgente e target</Tag> : <Tag>solo sorgente</Tag>}
                 {env.requireApproval && <Tag color="purple">protetto: approvazione richiesta</Tag>}
+                {env.loginClientId && <Tag color="blue">login</Tag>}
               </Space>
             ),
           },
@@ -143,6 +144,26 @@ export default function EnvironmentsPage() {
             extra={editing !== 'new' ? 'Lascia vuoto per non modificarlo' : 'Viene salvato cifrato e non è più visualizzabile'}
           >
             <Input.Password autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            name="loginClientId"
+            label="Login delle persone in questa org: OAuth client ID (Code Authorization)"
+            extra={`Facoltativo. Permette di entrare nell'app con un utente di questa org e di cambiare org dall'intestazione. Redirect URI del client: ${window.location.origin}${appUrl('/api/auth/callback')}`}
+          >
+            <Input allowClear />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(a, b) => a.loginClientId !== b.loginClientId}>
+            {() =>
+              form.getFieldValue('loginClientId') ? (
+                <Form.Item
+                  name="loginClientSecret"
+                  label="Secret del client di login"
+                  extra={editing !== 'new' && (editing as Environment | null)?.loginClientId ? 'Lascia vuoto per non modificarlo' : 'Viene salvato cifrato'}
+                >
+                  <Input.Password autoComplete="new-password" />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
           <Form.Item name="allowAsTarget" label="Utilizzabile come target" valuePropName="checked">
             <Switch />

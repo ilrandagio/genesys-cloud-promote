@@ -30,6 +30,9 @@ const envInput = z.object({
   allowAsTarget: z.boolean().default(true),
   /** Ambiente protetto: i plan verso questo target richiedono l'approvazione di una seconda persona */
   requireApproval: z.boolean().default(false),
+  /** Login delle persone in questa org (Code Authorization); vuoto = nessun login in questa org */
+  loginClientId: z.string().trim().optional(),
+  loginClientSecret: z.string().optional(),
 });
 
 const t = schema.environments;
@@ -42,6 +45,7 @@ const publicFields = {
   allowAsTarget: t.allowAsTarget,
   requireApproval: t.requireApproval,
   botMappings: t.botMappings,
+  loginClientId: t.loginClientId,
   createdAt: t.createdAt,
 };
 
@@ -59,6 +63,19 @@ async function orgNameFor(region: string, clientId: string, clientSecretEncrypte
   } finally {
     GenesysClient.forget(probeId);
   }
+}
+
+/** Client di login dell'org: senza ID niente login; secret vuoto in modifica = invariato */
+function loginFields(body: z.infer<typeof envInput>, current?: { loginClientId: string | null; loginClientSecretEncrypted: string | null }) {
+  const id = body.loginClientId?.trim();
+  if (!id) return { loginClientId: null, loginClientSecretEncrypted: null };
+  const secret = body.loginClientSecret
+    ? encrypt(body.loginClientSecret)
+    : current?.loginClientId === id
+      ? current.loginClientSecretEncrypted
+      : null;
+  if (!secret) throw new HttpError(400, 'Secret del client di login obbligatorio');
+  return { loginClientId: id, loginClientSecretEncrypted: secret };
 }
 
 /** Il nome è unico: due ambienti sulla stessa org non sono ammessi */
@@ -91,6 +108,7 @@ export async function environmentRoutes(app: FastifyInstance) {
         clientSecretEncrypted,
         allowAsTarget: body.allowAsTarget,
         requireApproval: body.requireApproval,
+        ...loginFields(body),
       })
       .returning(publicFields);
     return row;
@@ -113,6 +131,7 @@ export async function environmentRoutes(app: FastifyInstance) {
         clientSecretEncrypted,
         allowAsTarget: body.allowAsTarget,
         requireApproval: body.requireApproval,
+        ...loginFields(body, current),
         updatedAt: new Date(),
       })
       .where(eq(t.id, id))

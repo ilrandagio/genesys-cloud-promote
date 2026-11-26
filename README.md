@@ -220,6 +220,8 @@ Per limitare l'accesso (consigliato): `GENESYS_LOGIN_REQUIRED_ROLE` (nome di un 
 Il login Genesys identifica chi usa l'app; le operazioni sugli ambienti usano invece gli OAuth client
 Client Credentials configurati nella pagina Ambienti (sezione successiva). Lo storico dei job registra l'email dell'utente.
 
+**Cambio di org.** L'intestazione mostra l'org in cui si è entrati (nome letto da `/api/v2/organizations/me`); cliccandola si sceglie un'altra org e si rifà il login lì. Le org disponibili sono quella predefinita (`.env`) e gli ambienti per cui, nella pagina Ambienti, è configurato un client di login (*Code Authorization*, con lo stesso redirect `APP_URL/api/auth/callback`; secret salvato cifrato). Anche la pagina di login propone la scelta dell'org e ricorda l'ultima usata. Ruoli, abilitazione all'esecuzione e all'approvazione si leggono nell'org in cui si entra.
+
 ## Permessi degli OAuth client degli ambienti
 
 Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
@@ -231,6 +233,8 @@ Creare in ogni org un OAuth client *Client Credentials* con un ruolo dedicato:
   e la lettura di Telephony (Sites, Edge Groups) e Routing Email (domini ed Email Routes) per le scelte sul target.
 
 Il pulsante *Prova connessione* nella pagina Ambienti verifica le credenziali.
+
+**Roles `cx-as-code-readonly` e `cx-as-code-full`.** Lo script `scripts/cx-as-code-roles.mjs` li crea (o aggiorna) in un'org leggendo il catalogo dei permessi dell'org (`/api/v2/authorization/permissions`, che dipende dalle licenze): il primo ha le sole azioni di lettura (`view`, `search`…) sui domain della configurazione, il secondo tutte le azioni sugli stessi domain. Dati operativi esclusi da entrambi (registrazioni, valutazioni, conversazioni, schedule degli agenti). `cx-as-code-readonly` va all'OAuth client dell'app, `cx-as-code-full` alle persone che eseguono i rilasci; entrambi con tutte le divisioni. Uso: `node scripts/cx-as-code-roles.mjs --region <regione> --client-id <id> --client-secret <secret> [--dry-run] [--out ruoli.json]` (client con `authorization:role:view/add/edit`).
 
 ## Avvio in locale senza Docker (Windows, macOS, Linux)
 

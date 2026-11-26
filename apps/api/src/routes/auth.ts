@@ -3,6 +3,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { REGIONS } from '../genesys/regions.js';
+import { asc, eq, isNotNull } from 'drizzle-orm';
+import { db, schema } from '../lib/db.js';
+import { decrypt } from '../lib/crypto.js';
 
 /**
  * Login con Genesys Cloud: OAuth 2.0 Authorization Code + PKCE verso l'org di login.
@@ -18,8 +21,22 @@ if (!(config.GENESYS_LOGIN_REGION in REGIONS)) {
   throw new Error(`GENESYS_LOGIN_REGION "${config.GENESYS_LOGIN_REGION}" non valida. Valori ammessi: ${Object.keys(REGIONS).join(', ')}`);
 }
 
-const loginBase = `https://login.${config.GENESYS_LOGIN_REGION}`;
-const apiBase = `https://api.${config.GENESYS_LOGIN_REGION}`;
+/** Org in cui fare login: quella predefinita (.env) o un ambiente con un client di login configurato */
+interface LoginOrg {
+  envId?: string;
+  region: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+async function loginOrg(envId?: string): Promise<LoginOrg | undefined> {
+  if (!envId) {
+    return { region: config.GENESYS_LOGIN_REGION, clientId: config.GENESYS_LOGIN_CLIENT_ID, clientSecret: config.GENESYS_LOGIN_CLIENT_SECRET };
+  }
+  const [env] = await db.select().from(schema.environments).where(eq(schema.environments.id, envId));
+  if (!env?.loginClientId || !env.loginClientSecretEncrypted) return undefined;
+  return { envId, region: env.region, clientId: env.loginClientId, clientSecret: decrypt(env.loginClientSecretEncrypted) };
+}
 const redirectUri = `${config.APP_URL.replace(/\/$/, '')}/api/auth/callback`;
 const secure = config.APP_URL.startsWith('https://');
 /**
@@ -41,6 +58,11 @@ export interface SessionUser {
   canApply: boolean;
   /** Può approvare plan verso ambienti protetti */
   canApprove: boolean;
+  /** Org Genesys in cui è stato fatto il login (nome e regione) */
+  org?: string;
+  orgRegion?: string;
+  /** Ambiente dell'org di login (assente = org di login predefinita) */
+  envId?: string;
 }
 
 const emailList = (v?: string) => new Set((v ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean));
@@ -75,22 +97,37 @@ function fail(reply: FastifyReply, message: string) {
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  /** Avvia il login: redirect alla pagina di login di Genesys Cloud */
-  app.get('/api/auth/login', async (_req, reply) => {
+  /** Org in cui si può fare login: la predefinita e gli ambienti con un client di login (anche dalla pagina di login) */
+  app.get('/api/auth/orgs', async () => {
+    const envs = await db
+      .select({ id: schema.environments.id, name: schema.environments.name, region: schema.environments.region })
+      .from(schema.environments)
+      .where(isNotNull(schema.environments.loginClientId))
+      .orderBy(asc(schema.environments.name));
+    return [{ envId: '', name: `Org di login predefinita (${config.GENESYS_LOGIN_REGION})`, region: config.GENESYS_LOGIN_REGION }, ...envs.map((e) => ({ envId: e.id, name: e.name, region: e.region }))];
+  });
+
+  /** Avvia il login: redirect alla pagina di login di Genesys Cloud (?env=<id> per l'org di un ambiente) */
+  app.get('/api/auth/login', async (req, reply) => {
+    const raw = (req.query as { env?: string }).env;
+    const envId = raw && /^[0-9a-f-]{36}$/i.test(raw) ? raw : undefined;
+    if (raw && !envId) return fail(reply, 'Org non valida');
+    const org = await loginOrg(envId);
+    if (!org) return fail(reply, "Login non configurato per l'org scelta");
     const state = b64url(randomBytes(24));
     const verifier = b64url(randomBytes(48));
     const challenge = b64url(createHash('sha256').update(verifier).digest());
 
-    const url = new URL(`${loginBase}/oauth/authorize`);
+    const url = new URL(`https://login.${org.region}/oauth/authorize`);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('client_id', config.GENESYS_LOGIN_CLIENT_ID);
+    url.searchParams.set('client_id', org.clientId);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('state', state);
     url.searchParams.set('code_challenge', challenge);
     url.searchParams.set('code_challenge_method', 'S256');
 
     return reply
-      .setCookie(STATE_COOKIE, JSON.stringify({ state, verifier }), {
+      .setCookie(STATE_COOKIE, JSON.stringify({ state, verifier, envId }), {
         httpOnly: true,
         sameSite: 'lax',
         secure,
@@ -111,15 +148,19 @@ export async function authRoutes(app: FastifyInstance) {
     const raw = req.cookies[STATE_COOKIE];
     const unsigned = raw ? req.unsignCookie(raw) : undefined;
     if (!unsigned?.valid || !unsigned.value) return fail(reply, 'Sessione di login scaduta, riprova');
-    const saved = JSON.parse(unsigned.value) as { state: string; verifier: string };
+    const saved = JSON.parse(unsigned.value) as { state: string; verifier: string; envId?: string };
     if (!q.code || q.state !== saved.state) return fail(reply, 'Risposta di login non valida, riprova');
+    const org = await loginOrg(saved.envId);
+    if (!org) return fail(reply, "Login non più configurato per l'org scelta");
+    const loginBase = `https://login.${org.region}`;
+    const apiBase = `https://api.${org.region}`;
 
     // Scambio del code con il token dell'utente
     const tokenRes = await fetch(`${loginBase}/oauth/token`, {
       method: 'POST',
       headers: {
         Authorization:
-          'Basic ' + Buffer.from(`${config.GENESYS_LOGIN_CLIENT_ID}:${config.GENESYS_LOGIN_CLIENT_SECRET}`).toString('base64'),
+          'Basic ' + Buffer.from(`${org.clientId}:${org.clientSecret}`).toString('base64'),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
@@ -150,6 +191,12 @@ export async function authRoutes(app: FastifyInstance) {
     };
     const email = (me.email ?? me.username ?? '').toLowerCase();
 
+    // Nome dell'org in cui si è entrati: mostrato nell'intestazione
+    const orgName = await fetch(`${apiBase}/api/v2/organizations/me`, { headers: { Authorization: `Bearer ${access_token}` } })
+      .then(async (r) => (r.ok ? ((await r.json()) as { thirdPartyOrgName?: string; name?: string }) : undefined))
+      .then((o) => o?.thirdPartyOrgName ?? o?.name)
+      .catch(() => undefined);
+
     if (allowedEmails && !allowedEmails.has(email)) {
       return fail(reply, `L'utente ${email} non è abilitato a questa applicazione`);
     }
@@ -164,8 +211,11 @@ export async function authRoutes(app: FastifyInstance) {
       genesysUserId: me.id,
       canApply: grants(config.GENESYS_APPLY_ROLE, applyEmails, roles, email),
       canApprove: grants(config.GENESYS_APPROVER_ROLE, approverEmails, roles, email),
+      org: orgName ?? org.region,
+      orgRegion: org.region,
+      envId: org.envId,
     };
-    req.log.info({ user: email, canApply: user.canApply, canApprove: user.canApprove }, 'Login');
+    req.log.info({ user: email, org: user.org, canApply: user.canApply, canApprove: user.canApprove }, 'Login');
     const token = app.jwt.sign(user, { expiresIn: `${SESSION_HOURS}h` });
     return reply
       .setCookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure, path: SESSION_PATH, maxAge: SESSION_HOURS * 3600 })
@@ -181,7 +231,9 @@ export async function authRoutes(app: FastifyInstance) {
     return {
       username: u.sub,
       name: u.name,
-      org: config.GENESYS_LOGIN_REGION,
+      org: u.org ?? config.GENESYS_LOGIN_REGION,
+      orgRegion: u.orgRegion ?? config.GENESYS_LOGIN_REGION,
+      envId: u.envId ?? '',
       // Sessioni create prima dell'introduzione dei permessi: nessun permesso finché non si rifà il login
       canApply: u.canApply === true,
       canApprove: u.canApprove === true,

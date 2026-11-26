@@ -218,7 +218,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     // Chi è l'utente (con i ruoli, se serve il controllo)
     // Ruoli sempre letti: servono per accesso, esecuzione e approvazione
-    const meRes = await fetch(`${apiBase}/api/v2/users/me?expand=authorization`, {
+    const meRes = await fetch(`${apiBase}/api/v2/users/me?expand=authorization,organization`, {
       headers: { Authorization: `Bearer ${access_token}` },
     });
     if (!meRes.ok) return fail(reply, `Impossibile leggere il profilo Genesys (${meRes.status})`);
@@ -228,14 +228,25 @@ export async function authRoutes(app: FastifyInstance) {
       email?: string;
       username?: string;
       authorization?: { roles?: { name: string }[] };
+      organization?: { id?: string; name?: string; thirdPartyOrgName?: string };
     };
     const email = (me.email ?? me.username ?? '').toLowerCase();
 
-    // Nome dell'org in cui si è entrati: mostrato nell'intestazione
-    const orgName = await fetch(`${apiBase}/api/v2/organizations/me`, { headers: { Authorization: `Bearer ${access_token}` } })
-      .then(async (r) => (r.ok ? ((await r.json()) as { thirdPartyOrgName?: string; name?: string }) : undefined))
-      .then((o) => o?.thirdPartyOrgName ?? o?.name)
-      .catch(() => undefined);
+    // Nome dell'org in cui si è entrati (short name, come nell'elenco Ambienti): dal profilo (expand=organization),
+    // altrimenti da /api/v2/organizations/me, che può mancare se il client di login ha scope limitati
+    let orgName = me.organization?.thirdPartyOrgName || me.organization?.name;
+    if (!orgName) {
+      orgName = await fetch(`${apiBase}/api/v2/organizations/me`, { headers: { Authorization: `Bearer ${access_token}` } })
+        .then(async (r) => {
+          if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+          const o = (await r.json()) as { thirdPartyOrgName?: string; name?: string };
+          return o.thirdPartyOrgName || o.name;
+        })
+        .catch((e) => {
+          req.log.warn({ err: (e as Error).message }, "Nome dell'org di login non leggibile");
+          return undefined;
+        });
+    }
     if (orgName && !org.envId && !saved.region && !saved.prompt) defaultOrgName = orgName;
 
     if (allowedEmails && !allowedEmails.has(email)) {

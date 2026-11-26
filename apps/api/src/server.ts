@@ -41,7 +41,7 @@ await app.register(environmentRoutes);
 await app.register(objectRoutes);
 await app.register(jobRoutes);
 
-await app.listen({ port: config.PORT, host: '0.0.0.0' });
+await app.listen({ port: config.API_PORT, host: '0.0.0.0' });
 app.log.info(
   `Database: ${usingPglite ? `integrato (PGlite) in ${config.DATA_DIR}` : 'PostgreSQL'} · ` +
     `Job: ${inProcessWorker ? 'eseguiti in questo processo' : 'worker separato via Redis'}`,

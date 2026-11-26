@@ -17,7 +17,8 @@ for (const candidate of [path.resolve(process.cwd(), '.env'), path.resolve(here,
 const empty = (v: unknown) => (v === '' ? undefined : v);
 
 const schema = z.object({
-  PORT: z.coerce.number().default(3000),
+  /** Porta su cui ascolta l'api (in sviluppo letta anche dal proxy di Vite) */
+  API_PORT: z.coerce.number().default(3000),
   /// Se assente: modalità locale con database integrato (PGlite) in DATA_DIR
   DATABASE_URL: z.preprocess(empty, z.string().optional()),
   /// Se assente: coda interna al processo dell'API (niente worker separato)

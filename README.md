@@ -252,7 +252,7 @@ npm run dev                              # avvia API e interfaccia insieme
 
 Aprire http://localhost:5173 e premere **Accedi con Genesys Cloud**. Prima serve il client OAuth di login (vedi sopra).
 
-**Porte in sviluppo.** `npm run dev` avvia l'interfaccia (Vite) su 5173, da aprire nel browser, e l'api su 3000; Vite inoltra all'api le richieste `/api`. Se la 3000 è occupata da un'altra applicazione: `PORT=3001` (o un'altra porta libera) nel `.env`, letto sia dall'api sia dal proxy di Vite. Con Docker l'api usa sempre la 3000 interna al container, qualunque sia `PORT`.
+**Porte in sviluppo.** `npm run dev` avvia l'interfaccia (Vite) su 5173, da aprire nel browser, e l'api su 3000; Vite inoltra all'api le richieste `/api`. Se la 3000 è occupata da un'altra applicazione: `API_PORT=3001` (o un'altra porta libera) nel `.env`, letto sia dall'api sia dal proxy di Vite. Con Docker l'api usa sempre la 3000 interna al container, qualunque sia `API_PORT`.
 
 **Database.** Senza `DATABASE_URL` l'app usa un PostgreSQL integrato (PGlite) nella cartella `data/`: comodo per provare,
 ma una chiusura brusca del processo può danneggiarlo (l'app chiude in modo ordinato con Ctrl+C, ma non se il processo

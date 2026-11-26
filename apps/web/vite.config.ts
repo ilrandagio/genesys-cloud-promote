@@ -9,9 +9,9 @@ import { defineConfig, loadEnv } from 'vite';
  */
 const base = `/${(process.env.VITE_BASE_PATH ?? '').replace(/^\/+|\/+$/g, '')}/`.replace('//', '/');
 
-/** Porta dell'api in sviluppo: PORT del .env nella cartella principale (default 3000), la stessa letta dall'api */
+/** Porta dell'api in sviluppo: API_PORT del .env nella cartella principale (default 3000), la stessa letta dall'api */
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const apiPort = process.env.PORT || loadEnv('development', root, '').PORT || '3000';
+const apiPort = process.env.API_PORT || loadEnv('development', root, '').API_PORT || '3000';
 
 export default defineConfig({
   base,

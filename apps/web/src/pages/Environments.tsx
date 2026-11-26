@@ -148,7 +148,7 @@ export default function EnvironmentsPage() {
           <Form.Item
             name="loginClientId"
             label="Login delle persone in questa org: OAuth client ID (Code Authorization)"
-            extra={`Facoltativo. Permette di entrare nell'app con un utente di questa org e di cambiare org dall'intestazione. Redirect URI del client: ${window.location.origin}${appUrl('/api/auth/callback')}`}
+            extra={`Facoltativo: di norma per entrare in questa org basta il client di login principale (vale in tutte le regioni e con le Authorized Organizations). Serve solo se l'org richiede un proprio client. Redirect URI: ${window.location.origin}${appUrl('/api/auth/callback')}`}
           >
             <Input allowClear />
           </Form.Item>

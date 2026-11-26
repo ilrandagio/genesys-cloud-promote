@@ -70,6 +70,22 @@ export interface LoginOrg {
   region: string;
 }
 
+export interface LoginOptions {
+  orgs: LoginOrg[];
+  regions: string[];
+  defaultRegion: string;
+}
+
+/** URL di login: org di un ambiente, altra org in una regione o org predefinita; switch = chiedere le credenziali */
+export const loginUrl = (o: { envId?: string; region?: string; switch?: boolean }) => {
+  const q = new URLSearchParams();
+  if (o.envId) q.set('env', o.envId);
+  else if (o.region) q.set('region', o.region);
+  if (o.switch) q.set('switch', '1');
+  const s = q.toString();
+  return appUrl(`/api/auth/login${s ? `?${s}` : ''}`);
+};
+
 export interface BotMapping {
   integration?: string;
   sourceBot: string;

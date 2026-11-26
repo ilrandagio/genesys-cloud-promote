@@ -3,9 +3,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { REGIONS } from '../genesys/regions.js';
-import { asc, eq, isNotNull } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { db, schema } from '../lib/db.js';
 import { decrypt } from '../lib/crypto.js';
+import { GenesysClient } from '../genesys/client.js';
 
 /**
  * Login con Genesys Cloud: OAuth 2.0 Authorization Code + PKCE verso l'org di login.
@@ -21,25 +22,49 @@ if (!(config.GENESYS_LOGIN_REGION in REGIONS)) {
   throw new Error(`GENESYS_LOGIN_REGION "${config.GENESYS_LOGIN_REGION}" non valida. Valori ammessi: ${Object.keys(REGIONS).join(', ')}`);
 }
 
-/** Org in cui fare login: quella predefinita (.env) o un ambiente con un client di login configurato */
+/**
+ * Dove fare login. Il client Code Authorization del .env vale in tutte le regioni (un client Code Authorization
+ * Genesys si usa in ogni regione), quindi si può entrare in qualunque org e regione:
+ * - org predefinita: regione del .env;
+ * - org di un ambiente: regione dell'ambiente e, con target = ID dell'org, ingresso diretto tramite
+ *   Authorized Organizations (org trust), senza scegliere l'org; client di login dell'ambiente se configurato;
+ * - altra org: regione scelta e prompt=login, così Genesys chiede org e credenziali.
+ */
 interface LoginOrg {
   envId?: string;
   region: string;
   clientId: string;
   clientSecret: string;
+  /** ID dell'org di destinazione (Authorized Organizations) */
+  target?: string;
+  /** Chiedere sempre le credenziali (cambio di org) */
+  prompt?: boolean;
 }
 
 /** Nome dell'org di login predefinita: noto dal primo login dopo l'avvio (prima si mostra la regione) */
 let defaultOrgName: string | undefined;
 
-async function loginOrg(envId?: string): Promise<LoginOrg | undefined> {
-  if (!envId) {
-    return { region: config.GENESYS_LOGIN_REGION, clientId: config.GENESYS_LOGIN_CLIENT_ID, clientSecret: config.GENESYS_LOGIN_CLIENT_SECRET };
+const mainClient = () => ({ clientId: config.GENESYS_LOGIN_CLIENT_ID, clientSecret: config.GENESYS_LOGIN_CLIENT_SECRET });
+
+async function loginOrg(opts: { envId?: string; region?: string; prompt?: boolean }): Promise<LoginOrg | undefined> {
+  if (opts.envId) {
+    const [env] = await db.select().from(schema.environments).where(eq(schema.environments.id, opts.envId));
+    if (!env) return undefined;
+    const own = env.loginClientId && env.loginClientSecretEncrypted
+      ? { clientId: env.loginClientId, clientSecret: decrypt(env.loginClientSecretEncrypted) }
+      : undefined;
+    // ID dell'org letto con il client dell'ambiente: serve solo per entrare tramite Authorized Organizations
+    const target = own
+      ? undefined
+      : await new GenesysClient(env)
+          .get<{ id: string }>('/api/v2/organizations/me')
+          .then((o) => o.id)
+          .catch(() => undefined);
+    return { envId: env.id, region: env.region, ...(own ?? mainClient()), target, prompt: opts.prompt };
   }
-  const [env] = await db.select().from(schema.environments).where(eq(schema.environments.id, envId));
-  if (!env?.loginClientId || !env.loginClientSecretEncrypted) return undefined;
-  return { envId, region: env.region, clientId: env.loginClientId, clientSecret: decrypt(env.loginClientSecretEncrypted) };
+  return { region: opts.region ?? config.GENESYS_LOGIN_REGION, ...mainClient(), prompt: opts.prompt };
 }
+
 const redirectUri = `${config.APP_URL.replace(/\/$/, '')}/api/auth/callback`;
 const secure = config.APP_URL.startsWith('https://');
 /**
@@ -100,26 +125,33 @@ function fail(reply: FastifyReply, message: string) {
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  /** Org in cui si può fare login: la predefinita e gli ambienti con un client di login (anche dalla pagina di login) */
+  /** Dove si può fare login: org predefinita, ambienti configurati e regioni (anche dalla pagina di login) */
   app.get('/api/auth/orgs', async () => {
     const envs = await db
       .select({ id: schema.environments.id, name: schema.environments.name, region: schema.environments.region })
       .from(schema.environments)
-      .where(isNotNull(schema.environments.loginClientId))
       .orderBy(asc(schema.environments.name));
     const main = { envId: '', name: defaultOrgName ?? `Org di login predefinita (${config.GENESYS_LOGIN_REGION})`, region: config.GENESYS_LOGIN_REGION };
     // Un ambiente sulla stessa org di quella predefinita non si ripete
     const others = envs.filter((e) => !(defaultOrgName && e.name.toLowerCase() === defaultOrgName.toLowerCase() && e.region === main.region));
-    return [main, ...others.map((e) => ({ envId: e.id, name: e.name, region: e.region }))];
+    return {
+      orgs: [main, ...others.map((e) => ({ envId: e.id, name: e.name, region: e.region }))],
+      regions: Object.keys(REGIONS),
+      defaultRegion: config.GENESYS_LOGIN_REGION,
+    };
   });
 
-  /** Avvia il login: redirect alla pagina di login di Genesys Cloud (?env=<id> per l'org di un ambiente) */
+  /**
+   * Avvia il login: redirect alla pagina di login di Genesys Cloud.
+   * ?env=<id> org di un ambiente · ?region=<dominio> altra org nella regione · ?switch=1 chiedere le credenziali
+   */
   app.get('/api/auth/login', async (req, reply) => {
-    const raw = (req.query as { env?: string }).env;
-    const envId = raw && /^[0-9a-f-]{36}$/i.test(raw) ? raw : undefined;
-    if (raw && !envId) return fail(reply, 'Org non valida');
-    const org = await loginOrg(envId);
-    if (!org) return fail(reply, "Login non configurato per l'org scelta");
+    const q = req.query as { env?: string; region?: string; switch?: string };
+    const envId = q.env && /^[0-9a-f-]{36}$/i.test(q.env) ? q.env : undefined;
+    if (q.env && !envId) return fail(reply, 'Org non valida');
+    if (q.region && !(q.region in REGIONS)) return fail(reply, 'Regione non valida');
+    const org = await loginOrg({ envId, region: q.region, prompt: q.switch === '1' });
+    if (!org) return fail(reply, "Org scelta non trovata");
     const state = b64url(randomBytes(24));
     const verifier = b64url(randomBytes(48));
     const challenge = b64url(createHash('sha256').update(verifier).digest());
@@ -131,9 +163,11 @@ export async function authRoutes(app: FastifyInstance) {
     url.searchParams.set('state', state);
     url.searchParams.set('code_challenge', challenge);
     url.searchParams.set('code_challenge_method', 'S256');
+    if (org.target) url.searchParams.set('target', org.target);
+    if (org.prompt) url.searchParams.set('prompt', 'login');
 
     return reply
-      .setCookie(STATE_COOKIE, JSON.stringify({ state, verifier, envId }), {
+      .setCookie(STATE_COOKIE, JSON.stringify({ state, verifier, envId: org.envId, region: org.envId ? undefined : q.region, prompt: org.prompt }), {
         httpOnly: true,
         sameSite: 'lax',
         secure,
@@ -154,10 +188,10 @@ export async function authRoutes(app: FastifyInstance) {
     const raw = req.cookies[STATE_COOKIE];
     const unsigned = raw ? req.unsignCookie(raw) : undefined;
     if (!unsigned?.valid || !unsigned.value) return fail(reply, 'Sessione di login scaduta, riprova');
-    const saved = JSON.parse(unsigned.value) as { state: string; verifier: string; envId?: string };
+    const saved = JSON.parse(unsigned.value) as { state: string; verifier: string; envId?: string; region?: string; prompt?: boolean };
     if (!q.code || q.state !== saved.state) return fail(reply, 'Risposta di login non valida, riprova');
-    const org = await loginOrg(saved.envId);
-    if (!org) return fail(reply, "Login non più configurato per l'org scelta");
+    const org = await loginOrg({ envId: saved.envId, region: saved.region });
+    if (!org) return fail(reply, "Org scelta non più disponibile");
     const loginBase = `https://login.${org.region}`;
     const apiBase = `https://api.${org.region}`;
 
@@ -202,7 +236,7 @@ export async function authRoutes(app: FastifyInstance) {
       .then(async (r) => (r.ok ? ((await r.json()) as { thirdPartyOrgName?: string; name?: string }) : undefined))
       .then((o) => o?.thirdPartyOrgName ?? o?.name)
       .catch(() => undefined);
-    if (orgName && !org.envId) defaultOrgName = orgName;
+    if (orgName && !org.envId && !saved.region && !saved.prompt) defaultOrgName = orgName;
 
     if (allowedEmails && !allowedEmails.has(email)) {
       return fail(reply, `L'utente ${email} non è abilitato a questa applicazione`);

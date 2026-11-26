@@ -14,7 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Dropdown, Layout, Menu, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { api, appUrl, type LoginOrg, type Me } from './api/client';
+import { api, loginUrl, type LoginOptions, type Me } from './api/client';
 import EnvironmentsPage from './pages/Environments';
 import JobDetailPage from './pages/JobDetail';
 import JobsPage from './pages/Jobs';
@@ -38,7 +38,7 @@ export default function App() {
   const orgs = useQuery({
     queryKey: ['login-orgs'],
     enabled: me.isSuccess,
-    queryFn: () => api<LoginOrg[]>('/api/auth/orgs'),
+    queryFn: () => api<LoginOptions>('/api/auth/orgs'),
   });
 
   if (me.isLoading) return <Spin fullscreen />;
@@ -76,16 +76,28 @@ export default function App() {
           <Dropdown
             trigger={['click']}
             menu={{
-              selectable: true,
-              selectedKeys: [me.data?.envId ?? ''],
               items: [
-                { key: 'title', type: 'group', label: "Cambia org (nuovo login nell'org scelta)" },
-                ...(orgs.data ?? []).map((o) => ({ key: o.envId, label: `${o.name} (${o.region})` })),
+                {
+                  key: 'orgs',
+                  type: 'group',
+                  label: 'Cambia org',
+                  children: (orgs.data?.orgs ?? []).map((o) => {
+                    const current = o.name.toLowerCase() === me.data?.org.toLowerCase() && o.region === me.data?.orgRegion;
+                    return { key: `env:${o.envId}`, label: `${current ? '✓ ' : ''}${o.name} (${o.region})`, disabled: current };
+                  }),
+                },
+                { type: 'divider' },
+                {
+                  key: 'regions',
+                  label: 'Altra org (regione)…',
+                  children: (orgs.data?.regions ?? []).map((r) => ({ key: `region:${r}`, label: r })),
+                },
               ],
               onClick: (e) => {
-                if (e.key === (me.data?.envId ?? '')) return;
+                const [kind, value] = [e.key.slice(0, e.key.indexOf(':')), e.key.slice(e.key.indexOf(':') + 1)];
                 qc.clear();
-                window.location.href = appUrl(`/api/auth/login${e.key ? `?env=${encodeURIComponent(e.key)}` : ''}`);
+                window.location.href =
+                  kind === 'env' ? loginUrl({ envId: value, switch: true }) : loginUrl({ region: value, switch: true });
               },
             }}
           >

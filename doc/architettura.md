@@ -269,14 +269,29 @@ Un'esecuzione fallita lascia il plan consumato: si rifà la simulazione, che rip
 
 **Backup.** Il tab *Backup* crea un job `BACKUP` in sola lettura. *Completo* (predefinito): `genesyscloud_tf_export` senza filtri né attributi esclusi, quindi tutto ciò che il provider sa esportare, utenti, membri, telefonia e sicurezza compresi: un backup esatto dell'org. *Selezione*: si sceglie l'ambiente e, con la stessa selezione per tipo, cosa salvare (tutti gli oggetti di un tipo diventano un filtro `tipo::.*` dell'export), senza membri di Queues, Groups e Work Teams. In entrambi i casi l'export include lo state (ID degli oggetti); il worker aggiunge `BACKUP.json` (ambiente, data, autore, versione del provider, scelta, conteggi), crea l'archivio `.tar.gz` e lo cifra in streaming con AES-256-GCM in `BACKUP_DIR` (con Docker il volume `backups`, condiviso da API e worker). Il download (`GET /api/jobs/:id/backup`) decifra al volo e fallisce se il file è stato alterato. Si conservano gli ultimi `BACKUP_KEEP` backup completati (predefinito 30): gli archivi più vecchi vengono cancellati e restano nello storico come *cancellati*. Il backup non passa da simulazione né approvazione perché non scrive sulle org.
 
+### Rilasci (tag)
+
+**Tag per ambiente.** Un rilascio (tag) appartiene a un ambiente target (`release_tags`, nome unico per ambiente) e raccoglie più esecuzioni dello stesso pacchetto: per esempio prima le Queues, poi gli Scripts. Il tag è facoltativo: si sceglie (o si crea) nella simulazione accanto a *Simula*, l'esecuzione lo eredita dal plan e un ripristino dall'esecuzione che annulla. Il nome proposto incrementa l'ultimo numero del tag più recente dell'ambiente (`R2026.12.2` → `R2026.12.3`; senza tag `R<anno>.<mese>.1`). Un tag **chiuso** non si associa a nuove simulazioni e il suo contenuto resta fisso; si può riaprire. Eliminabile solo se nessun job lo usa.
+
+**Versioni degli oggetti.** Dopo ogni esecuzione di un plan con tag, il worker salva per ogni risorsa effettivamente scritta (`release_objects`) lo stato letto dal target, normalizzato come nel confronto dell'analisi: per i Flows la configurazione dell'ultima versione (`latestconfiguration`) e la versione pubblicata, per gli Scripts il contenuto esportato, per gli altri tipi del catalogo il dettaglio dell'API; per i tipi generici e gli oggetti unici dell'org gli attributi dello state Terraform. Un oggetto non leggibile viene salvato con l'errore; la cattura non interrompe mai l'esecuzione. Le regole del contenuto del tag:
+- per ogni oggetto vale l'**ultima versione portata** nel tag;
+- **esecuzione interrotta**: contano solo gli oggetti scritti davvero; una successiva esecuzione dello stesso tag li completa;
+- **ripristino**: per ogni oggetto ripristinato escono dal tag la versione dell'esecuzione annullata e le successive (sovrascritte dal ripristino); torna valida la versione precedente nello stesso tag, altrimenti l'oggetto risulta *annullato*. Un oggetto ricreato dal ripristino con un nuovo ID è riconosciuto per tipo e nome.
+
+**Confronti.** Dal dettaglio del tag (tab *Rilasci*): con il **sistema live** del suo ambiente (ogni oggetto riletto dal target: uguale, diverso con i campi, non più presente) o con un **altro tag**, dello stesso ambiente (abbinamento per ID) o di un altro (per tipo, nome e tipo di flow, perché gli ID cambiano tra org). Il confronto riga per riga va dall'altro termine al tag: `+` nel tag, `-` solo nell'altro (sul live, una modifica fatta dopo il rilascio). Per Flows e Scripts si vede anche la versione pubblicata.
+
+**Promozione.** *Promuovi in un altro ambiente* apre il porting con sorgente = ambiente del tag e selezionati gli oggetti del tag (tipi del catalogo); il nuovo tag proposto ha lo stesso nome (modificabile) e ricorda il tag di origine. La promozione non richiede un tag: un porting normale resta possibile con o senza tag.
+
 ### Modello dati e sicurezza dei dati
 
-Due tabelle reggono tutto; i dati sensibili sono cifrati e non escono mai dal server.
+Le tabelle principali sono quattro; i dati sensibili sono cifrati e non escono mai dal server.
 
 | Tabella | Contenuto principale |
 | --- | --- |
 | `environments` | Short name, regione, client ID, secret cifrato, *solo sorgente*, *richiede approvazione*, regole Bot Connector (`bot_mappings`) |
-| `jobs` | Simulazioni ed esecuzioni: oggetti e azioni scelti, archi dell'albero, log, output e riepilogo del piano, motivo di blocco, artefatto cifrato, file scaricabili cifrati, scadenza, approvatore, collegamento plan ↔ esecuzione, risorse scritte, stato precedente cifrato per il ripristino, collegamento ripristino ↔ esecuzione, backup (scelta, archivio, conteggi), tipi Terraform generici, autore, date |
+| `jobs` | Simulazioni ed esecuzioni: oggetti e azioni scelti, archi dell'albero, log, output e riepilogo del piano, motivo di blocco, artefatto cifrato, file scaricabili cifrati, scadenza, approvatore, collegamento plan ↔ esecuzione, risorse scritte, stato precedente cifrato per il ripristino, collegamento ripristino ↔ esecuzione, backup (scelta, archivio, conteggi), tipi Terraform generici, autore, date, rilascio (tag) |
+| `release_tags` | Rilasci: nome, ambiente target, descrizione, tag di origine (promozione), chiusura |
+| `release_objects` | Versioni degli oggetti nei rilasci: esecuzione, tipo (scritto, ripristinato, cancellato), oggetto sul target, contenuto normalizzato, versione pubblicata |
 
 Le migrazioni dello schema sono versionate (Drizzle) e applicate all'avvio dell'API.
 

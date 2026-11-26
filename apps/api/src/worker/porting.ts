@@ -142,6 +142,7 @@ import {
 } from './exportConfig.js';
 import { runBackup } from './backup.js';
 import { applyBotMappings, checkBotRefs } from './botConnector.js';
+import { captureRelease } from './releases.js';
 import { exportObjects } from './exporter.js';
 import { checkExportVariables, matchGenericOnTarget, resourceExists, stateIds, unresolvedGenericIds } from './generic.js';
 import {
@@ -758,6 +759,19 @@ async function runApply(job: JobRow, workDir: string, log: JobLog, setJob: SetJo
     snapshot.created = await createdResources(dir, saved);
     await resolveReplacedIds(dir, snapshot);
     await setJob({ appliedResources: applied, rollbackEncrypted: sealSnapshot(snapshot) });
+    // Rilascio con tag: versione di ogni oggetto scritto, letta dal target (anche con esito parziale)
+    if (plan.releaseTagId) {
+      await captureRelease({
+        tagId: plan.releaseTagId,
+        applyJobId: job.id,
+        undoneJobId: plan.rollbackOfJobId ?? undefined,
+        dir,
+        plan: saved,
+        applied,
+        target: new GenesysClient(targetEnv),
+        log: log.info,
+      }).catch((e) => log.info(`ATTENZIONE: versione degli oggetti del rilascio non salvata: ${(e as Error).message}`));
+    }
     if (res.code !== 0) {
       throw new Error(
         `Esecuzione interrotta con errore. Modifiche applicate prima dell'errore (${applied.length}): ` +

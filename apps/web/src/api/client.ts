@@ -240,6 +240,9 @@ export interface PlanState {
 export interface JobSummary {
   id: string;
   mode: 'PLAN' | 'APPLY' | 'BACKUP';
+  /** Rilascio (tag) del job */
+  releaseTagId?: string | null;
+  releaseTagName?: string | null;
   status: JobStatus;
   createdBy: string;
   createdAt: string;
@@ -304,4 +307,72 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText);
   return data as T;
+}
+
+/** Rilascio (tag) di un ambiente target */
+export interface ReleaseTag {
+  id: string;
+  name: string;
+  description?: string | null;
+  targetEnvId: string;
+  targetName: string;
+  promotedFromTagId?: string | null;
+  createdBy: string;
+  createdAt: string;
+  closedAt?: string | null;
+  closedBy?: string | null;
+  /** Esecuzioni del tag */
+  jobs: number;
+  lastActivity?: string | null;
+}
+
+/** Versione di un oggetto nel tag (senza contenuto) */
+export interface ReleaseObjectBrief {
+  id: string;
+  jobId: string;
+  type?: ObjectType | null;
+  tfType: string;
+  targetId?: string | null;
+  name: string;
+  subtype?: string | null;
+  version?: string;
+  error?: string;
+  comparable: boolean;
+  capturedAt: string;
+  /** Quante volte è stato portato nel tag */
+  versions?: number;
+}
+
+export interface ReleaseDetail extends Omit<ReleaseTag, 'jobs' | 'lastActivity'> {
+  targetRegion: string;
+  promotedFrom?: { id: string; name: string; targetName: string };
+  jobs: {
+    id: string;
+    mode: 'PLAN' | 'APPLY' | 'BACKUP';
+    status: string;
+    createdBy: string;
+    createdAt: string;
+    finishedAt?: string | null;
+    planJobId?: string | null;
+    rollbackOfJobId?: string | null;
+    appliedResources?: string[] | null;
+    sourceName: string;
+  }[];
+  objects: ReleaseObjectBrief[];
+  undone: ReleaseObjectBrief[];
+}
+
+export type ReleaseCompareStatus = 'same' | 'different' | 'only_tag' | 'only_other' | 'missing_live' | 'not_comparable';
+
+export interface ReleaseCompare {
+  other: { kind: 'live' } | { kind: 'tag'; id: string; name: string; targetName: string };
+  rows: {
+    key: string;
+    status: ReleaseCompareStatus;
+    tag?: ReleaseObjectBrief;
+    other?: ReleaseObjectBrief;
+    diff?: string[];
+    liveVersion?: string;
+    error?: string;
+  }[];
 }

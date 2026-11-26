@@ -9,6 +9,7 @@ import {
   SaveOutlined,
   SunOutlined,
   SwapOutlined,
+  TagsOutlined,
 } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Dropdown, Layout, Menu, Space, Spin, Tag, Tooltip, Typography } from 'antd';
@@ -20,6 +21,8 @@ import JobDetailPage from './pages/JobDetail';
 import JobsPage from './pages/Jobs';
 import LoginPage from './pages/Login';
 import BackupPage from './pages/Backup';
+import ReleasesPage from './pages/Releases';
+import ReleaseDetailPage from './pages/ReleaseDetail';
 import PortingPage from './pages/Porting';
 import { useThemeMode, type ThemeMode } from './theme';
 
@@ -68,6 +71,7 @@ export default function App() {
             { key: '/porting', icon: <SwapOutlined />, label: 'Porting' },
             { key: '/disaster-recovery', icon: <SafetyCertificateOutlined />, label: 'Disaster Recovery' },
             { key: '/backup', icon: <SaveOutlined />, label: 'Backup' },
+            { key: '/releases', icon: <TagsOutlined />, label: 'Rilasci' },
             { key: '/jobs', icon: <HistoryOutlined />, label: 'Storico' },
             { key: '/environments', icon: <CloudServerOutlined />, label: 'Ambienti' },
           ]}
@@ -145,6 +149,8 @@ export default function App() {
           <Route path="/porting" element={<PortingPage key="porting" />} />
           <Route path="/disaster-recovery" element={<PortingPage key="dr" mode="dr" />} />
           <Route path="/backup" element={<BackupPage />} />
+          <Route path="/releases" element={<ReleasesPage />} />
+          <Route path="/releases/:id" element={<ReleaseDetailPage />} />
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/jobs/:id" element={<JobDetailPage />} />
           <Route path="/environments" element={<EnvironmentsPage />} />

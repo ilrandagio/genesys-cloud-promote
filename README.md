@@ -46,8 +46,14 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
    utenti, membri, telefonia e sicurezza compresi: backup esatto) oppure dei soli tipi scelti, con file dei Flows, degli Scripts, audio dei Prompts, state con gli ID e `BACKUP.json`. L'archivio viene
    salvato cifrato sul server (`BACKUP_DIR`, volume `backups` con Docker) e si scarica dalla pagina del backup; si
    conservano gli ultimi `BACKUP_KEEP` (predefinito 30). Nessuna simulazione né approvazione: non scrive sulle org.
-7. **Tema chiaro, scuro o come il sistema**, dal pulsante nell'intestazione; la scelta resta salvata nel browser.
-8. **Ordinamento e filtro delle tabelle** per nome e per tipo (ordinando per entrambi il tipo raggruppa e il nome
+7. **Rilasci (tag)** (tab dedicato): un tag di un ambiente target raccoglie più esecuzioni dello stesso pacchetto
+   (es. prima le Queues, poi gli Scripts); si sceglie o si crea nella simulazione (facoltativo, nome proposto
+   incrementando l'ultimo). Dopo ogni esecuzione si salva la versione di ogni oggetto scritto, letta dal target: per
+   ogni oggetto vale l'ultima portata, un'esecuzione interrotta conta solo per gli oggetti scritti, un ripristino toglie
+   dal tag le versioni annullate. Il tag si confronta con il sistema live o con un altro tag (anche di un altro
+   ambiente), si chiude per fissarne il contenuto e si può **promuovere** in un altro ambiente (porting precompilato).
+8. **Tema chiaro, scuro o come il sistema**, dal pulsante nell'intestazione; la scelta resta salvata nel browser.
+9. **Ordinamento e filtro delle tabelle** per nome e per tipo (ordinando per entrambi il tipo raggruppa e il nome
    ordina dentro il gruppo), dall'intestazione della colonna. Nell'albero dell'analisi il filtro per tipo (più tipi
    insieme, anche con il filtro per azione) mostra gli oggetti come elenco, ognuno una volta sola.
 

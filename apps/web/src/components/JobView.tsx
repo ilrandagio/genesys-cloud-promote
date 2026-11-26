@@ -256,6 +256,13 @@ export default function JobView({
               </Descriptions.Item>
             </>
           )}
+          {j.releaseTagId && (
+            <Descriptions.Item label="Rilascio">
+              <Link to={`/releases/${j.releaseTagId}`}>
+                <Tag color="geekblue">{j.releaseTagName}</Tag>
+              </Link>
+            </Descriptions.Item>
+          )}
           <Descriptions.Item label={j.mode === 'PLAN' ? 'Creato da' : 'Eseguito da'}>{j.createdBy}</Descriptions.Item>
           <Descriptions.Item label="Avviato">{fmt(j.createdAt)}</Descriptions.Item>
           <Descriptions.Item label="Terminato">{fmt(j.finishedAt)}</Descriptions.Item>

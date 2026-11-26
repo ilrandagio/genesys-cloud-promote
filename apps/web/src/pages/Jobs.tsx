@@ -50,6 +50,15 @@ export default function JobsPage() {
             ),
           },
           {
+            title: 'Rilascio',
+            render: (_, j) =>
+              j.releaseTagId ? (
+                <Link to={`/releases/${j.releaseTagId}`}>
+                  <Tag color="geekblue">{j.releaseTagName}</Tag>
+                </Link>
+              ) : null,
+          },
+          {
             title: 'Modifiche',
             render: (_, j) =>
               j.planSummary ? (

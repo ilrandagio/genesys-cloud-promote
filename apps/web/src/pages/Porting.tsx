@@ -21,7 +21,7 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   api,
   appUrl,
@@ -35,6 +35,7 @@ import {
   type PortItem,
 } from '../api/client';
 import JobView from '../components/JobView';
+import ReleaseTagPicker from '../components/ReleaseTagPicker';
 import DiffModal from '../components/DiffModal';
 import TargetSettingsEditor, { missingSettings, proposeSettings, settingsValid } from '../components/TargetSettingsEditor';
 import { compareText, filterBy, flowTypeLabel, sortBy, TargetStatusTag, typeLabel } from '../components/StatusTag';
@@ -158,6 +159,31 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
   const genericTypes = dr ? drGeneric : [];
   const [drResolved, setDrResolved] = useState<{ objects: GcObject[]; loading: ObjectType[] }>({ objects: [], loading: [] });
   const [submitting, setSubmitting] = useState(false);
+  /** Rilascio (tag) dell'ambiente target a cui associare la simulazione */
+  const [releaseTagId, setReleaseTagId] = useSessionState<string | undefined>(ns + 'releaseTagId', undefined);
+  /** Promozione di un rilascio da un altro ambiente: nome proposto e tag di origine */
+  const [promote, setPromote] = useSessionState<{ tagName: string; fromTagId: string } | undefined>(ns + 'promote', undefined);
+  const location = useLocation();
+
+  // Arrivo da "Promuovi" di un rilascio: sorgente = ambiente del tag, oggetti = contenuto del tag
+  useEffect(() => {
+    const st = location.state as
+      | { promote?: { sourceEnvId: string; objects: GcObject[]; tagName: string; fromTagId: string } }
+      | null;
+    if (dr || !st?.promote) return;
+    const p = st.promote;
+    setSourceId(p.sourceEnvId);
+    setTargetId(undefined);
+    setSelected(new Map(p.objects.map((o) => [`${o.type}:${o.id}`, o])));
+    setOnlySelected(true);
+    setReleaseTagId(undefined);
+    setPromote({ tagName: p.tagName, fromTagId: p.fromTagId });
+    setTrees(undefined);
+    setActions(new Map());
+    setWarnings([]);
+    setPlan(undefined);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const envs = useQuery({ queryKey: ['environments'], queryFn: () => api<Environment[]>('/api/environments') });
   const types = useQuery({
@@ -392,7 +418,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
     try {
       const job = await api<{ id: string }>('/api/jobs', {
         method: 'POST',
-        body: { sourceEnvId: sourceId, targetEnvId: targetId, items, edges, terraformTypes: genericTypes },
+        body: { sourceEnvId: sourceId, targetEnvId: targetId, items, edges, terraformTypes: genericTypes, releaseTagId },
       });
       setPlan({ jobId: job.id, fingerprint });
       setPlanOpen(true);
@@ -697,6 +723,13 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
                 value={typeFilter}
                 onChange={setTypeFilter}
                 options={treeTypes.map(([t, n]) => ({ value: t, label: `${t} (${n})` }))}
+              />
+              <ReleaseTagPicker
+                targetEnvId={targetId}
+                value={releaseTagId}
+                onChange={setReleaseTagId}
+                suggestedName={promote?.tagName}
+                promotedFromTagId={promote?.fromTagId}
               />
               <Tooltip
                 title={settingsMissing.length ? `Scegliere sul target: ${settingsMissing.join('; ')}` : undefined}

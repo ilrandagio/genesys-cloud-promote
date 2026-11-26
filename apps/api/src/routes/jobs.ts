@@ -78,6 +78,8 @@ const publicFields = {
   rollbackAvailable: sql<boolean>`${j.rollbackEncrypted} is not null`,
   backup: j.backup,
   terraformTypes: j.terraformTypes,
+  releaseTagId: j.releaseTagId,
+  releaseTagName: sql<string | null>`(select name from release_tags where id = ${j.releaseTagId})`,
 };
 
 type PublicJob = Awaited<ReturnType<typeof selectJobs>>[number];
@@ -155,6 +157,8 @@ export async function jobRoutes(app: FastifyInstance) {
         terraformTypes: z.array(z.string()).default([]),
         /** Archi dell'albero delle dipendenze ("from" usa "to"), per l'ordine di creazione */
         edges: z.array(z.object({ from: z.string(), to: z.string() })).default([]),
+        /** Rilascio (tag) dell'ambiente target a cui appartiene */
+        releaseTagId: z.string().uuid().optional(),
       })
       .parse(req.body);
 
@@ -175,6 +179,13 @@ export async function jobRoutes(app: FastifyInstance) {
       throw new HttpError(400, 'Nessun oggetto da portare');
     }
 
+    if (body.releaseTagId) {
+      const [tag] = await db.select().from(schema.releaseTags).where(eq(schema.releaseTags.id, body.releaseTagId));
+      if (!tag) throw new HttpError(400, 'Rilascio (tag) non trovato');
+      if (tag.targetEnvId !== body.targetEnvId) throw new HttpError(400, `Il tag "${tag.name}" appartiene a un altro ambiente target`);
+      if (tag.closedAt) throw new HttpError(400, `Il rilascio "${tag.name}" è chiuso: riaprirlo o usare un altro tag`);
+    }
+
     const keys = new Set(body.items.map((i) => `${i.type}:${i.id}`.toLowerCase()));
     const edges = body.edges.filter((e) => keys.has(e.from.toLowerCase()) && keys.has(e.to.toLowerCase()));
 
@@ -187,6 +198,7 @@ export async function jobRoutes(app: FastifyInstance) {
         items: body.items,
         edges,
         terraformTypes: body.terraformTypes.length ? [...new Set(body.terraformTypes)] : null,
+        releaseTagId: body.releaseTagId ?? null,
         createdBy: sessionUser(req).sub,
       })
       .returning({ id: j.id });
@@ -270,6 +282,7 @@ export async function jobRoutes(app: FastifyInstance) {
         targetEnvId: plan.targetEnvId,
         items: plan.items,
         planJobId: plan.id,
+        releaseTagId: plan.releaseTagId,
         createdBy: user.sub,
         log:
           `[porting] Esecuzione richiesta da ${user.sub} del plan ${plan.id} ` +
@@ -421,6 +434,8 @@ export async function jobRoutes(app: FastifyInstance) {
         targetEnvId: apply.targetEnvId,
         items: apply.items,
         rollbackOfJobId: apply.id,
+        // Il ripristino appartiene allo stesso rilascio: le versioni annullate escono dal tag
+        releaseTagId: apply.releaseTagId,
         createdBy: sessionUser(req).sub,
       })
       .returning({ id: j.id });

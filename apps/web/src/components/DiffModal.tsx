@@ -54,8 +54,8 @@ function buildLines(a: string, b: string, all: boolean): Line[] {
 
 const SIGN: Record<'same' | 'del' | 'add', string> = { same: ' ', del: '-', add: '+' };
 
-/** Differenze tra l'oggetto sul sorgente e sul target, come le vede l'analisi */
-export default function DiffModal({ open, onClose, name, type, sourceEnvId, targetEnvId, sourceId, targetId }: Props) {
+/** Confronto riga per riga di due contenuti JSON: da "from" a "to" (+ righe solo in "to", - righe solo in "from") */
+export function DiffView({ from, to }: { from: unknown; to: unknown }) {
   const [all, setAll] = useState(false);
   const { token } = theme.useToken();
   // Colori dal tema: leggibili sia in chiaro sia in scuro
@@ -64,6 +64,44 @@ export default function DiffModal({ open, onClose, name, type, sourceEnvId, targ
     del: { bg: token.colorErrorBg, color: token.colorErrorText },
     add: { bg: token.colorSuccessBg, color: token.colorSuccessText },
   };
+  const lines = useMemo(
+    () => buildLines(from == null ? '' : JSON.stringify(from, null, 2), to == null ? '' : JSON.stringify(to, null, 2), all),
+    [from, to, all],
+  );
+  return (
+    <Space direction="vertical" style={{ width: '100%' }}>
+      <Space>
+        <Switch size="small" checked={all} onChange={setAll} /> Mostra tutto il contenuto
+      </Space>
+      <pre
+        style={{
+          margin: 0,
+          maxHeight: '60vh',
+          overflow: 'auto',
+          fontSize: 12,
+          lineHeight: 1.5,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: 6,
+        }}
+      >
+        {lines.map((l, i) =>
+          l.kind === 'gap' ? (
+            <div key={i} style={{ background: token.colorFillQuaternary, color: token.colorTextTertiary, padding: '0 8px' }}>
+              ⋯ {l.count} righe uguali
+            </div>
+          ) : (
+            <div key={i} style={{ background: STYLE[l.kind].bg, color: STYLE[l.kind].color, padding: '0 8px' }}>
+              {SIGN[l.kind]} {l.text}
+            </div>
+          ),
+        )}
+      </pre>
+    </Space>
+  );
+}
+
+/** Differenze tra l'oggetto sul sorgente e sul target, come le vede l'analisi */
+export default function DiffModal({ open, onClose, name, type, sourceEnvId, targetEnvId, sourceId, targetId }: Props) {
   const q = useQuery({
     queryKey: ['compare', sourceEnvId, targetEnvId, type, sourceId, targetId],
     queryFn: () =>
@@ -72,14 +110,6 @@ export default function DiffModal({ open, onClose, name, type, sourceEnvId, targ
       ),
     enabled: open,
   });
-  const lines = useMemo(
-    () =>
-      q.data
-        ? // Dal target al sorgente, come lo cambierebbe il porting: + portato sul target, - tolto dal target
-          buildLines(JSON.stringify(q.data.target, null, 2), JSON.stringify(q.data.source, null, 2), all)
-        : [],
-    [q.data, all],
-  );
 
   return (
     <Modal open={open} onCancel={onClose} footer={null} width={1000} title={`Differenze: ${name}`} destroyOnHidden>
@@ -104,32 +134,8 @@ export default function DiffModal({ open, onClose, name, type, sourceEnvId, targ
             ) : (
               <Alert type="success" showIcon message="Nessuna differenza: l'oggetto è uguale sul target" />
             )}
-            <Space>
-              <Switch size="small" checked={all} onChange={setAll} /> Mostra tutto il contenuto
-            </Space>
-            <pre
-              style={{
-                margin: 0,
-                maxHeight: '60vh',
-                overflow: 'auto',
-                fontSize: 12,
-                lineHeight: 1.5,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                borderRadius: 6,
-              }}
-            >
-              {lines.map((l, i) =>
-                l.kind === 'gap' ? (
-                  <div key={i} style={{ background: token.colorFillQuaternary, color: token.colorTextTertiary, padding: '0 8px' }}>
-                    ⋯ {l.count} righe uguali
-                  </div>
-                ) : (
-                  <div key={i} style={{ background: STYLE[l.kind].bg, color: STYLE[l.kind].color, padding: '0 8px' }}>
-                    {SIGN[l.kind]} {l.text}
-                  </div>
-                ),
-              )}
-            </pre>
+            {/* Dal target al sorgente, come lo cambierebbe il porting */}
+            <DiffView from={q.data.target} to={q.data.source} />
           </>
         )}
       </Space>

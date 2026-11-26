@@ -7,6 +7,7 @@ import { config, inProcessWorker } from './config.js';
 import { closeDb, migrateDb, usingPglite } from './lib/db.js';
 import { localQueueIdle } from './lib/queue.js';
 import { failInterruptedJobs, purgeStaleArtifacts } from './lib/maintenance.js';
+import { releaseRoutes } from './routes/releases.js';
 import { authRoutes, COOKIE } from './routes/auth.js';
 import { environmentRoutes } from './routes/environments.js';
 import { jobRoutes } from './routes/jobs.js';
@@ -40,6 +41,7 @@ await app.register(authRoutes);
 await app.register(environmentRoutes);
 await app.register(objectRoutes);
 await app.register(jobRoutes);
+await app.register(releaseRoutes);
 
 await app.listen({ port: config.API_PORT, host: '0.0.0.0' });
 app.log.info(

@@ -50,6 +50,13 @@
       "when": 1795694136684,
       "tag": "0006_login_clients",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795709532713,
+      "tag": "0007_release_tags",
+      "breakpoints": true
     }
   ]
 }

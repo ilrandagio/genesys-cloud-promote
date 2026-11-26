@@ -128,6 +128,8 @@ export const jobs = pgTable('jobs', {
   terraformTypes: jsonb('terraform_types').$type<string[]>(),
   /** Backup: oggetti scelti, archivio cifrato su disco, dimensione e conteggi per tipo */
   backup: jsonb('backup').$type<BackupInfo>(),
+  /** Rilascio (tag) a cui appartiene: scelto nella simulazione, ereditato da esecuzione e ripristino */
+  releaseTagId: uuid('release_tag_id'),
 }, (t) => [
   // Garanzia a livello di database: un plan può generare al massimo un porting
   uniqueIndex('jobs_plan_job_id_unique').on(t.planJobId),
@@ -135,3 +137,54 @@ export const jobs = pgTable('jobs', {
 
 export type Environment = typeof environments.$inferSelect;
 export type Job = typeof jobs.$inferSelect;
+
+/**
+ * Rilascio (tag) di un ambiente target: raccoglie più esecuzioni (es. prima le Queues, poi gli Scripts).
+ * Lo stesso nome può esistere su più ambienti; promosso da un altro ambiente, ne ricorda l'origine.
+ */
+export const releaseTags = pgTable(
+  'release_tags',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    targetEnvId: uuid('target_env_id').notNull().references(() => environments.id),
+    description: text('description'),
+    /** Tag di un altro ambiente da cui è stato promosso */
+    promotedFromTagId: uuid('promoted_from_tag_id'),
+    createdBy: text('created_by').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    /** Tag chiuso: non si associa a nuove simulazioni, il contenuto resta fisso (si può riaprire) */
+    closedAt: timestamp('closed_at'),
+    closedBy: text('closed_by'),
+  },
+  (t) => [uniqueIndex('release_tags_env_name_unique').on(t.targetEnvId, t.name)],
+);
+
+/**
+ * Versione di un oggetto in un rilascio: lo stato letto dal target subito dopo un'esecuzione del tag
+ * (anche interrotta: solo gli oggetti effettivamente scritti) o dopo un ripristino.
+ * - applied: scritto da un'esecuzione del tag;
+ * - restored / deleted: un ripristino ha riportato l'oggetto allo stato precedente o lo ha cancellato
+ *   (undoneJobId = esecuzione annullata).
+ */
+export const releaseObjects = pgTable('release_objects', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tagId: uuid('tag_id').notNull().references(() => releaseTags.id),
+  jobId: uuid('job_id').notNull().references(() => jobs.id),
+  kind: text('kind').$type<'applied' | 'restored' | 'deleted'>().notNull(),
+  undoneJobId: uuid('undone_job_id'),
+  /** Tipo del catalogo (assente per i tipi Terraform generici) e tipo Terraform */
+  type: text('type'),
+  tfType: text('tf_type').notNull(),
+  targetId: text('target_id'),
+  name: text('name').notNull(),
+  subtype: text('subtype'),
+  /** Contenuto normalizzato (come nel confronto dell'analisi); null se non leggibile */
+  content: jsonb('content'),
+  /** Versione pubblicata (Flows), errore di lettura, ecc. */
+  info: jsonb('info').$type<{ version?: string; error?: string; source?: 'api' | 'state' }>(),
+  capturedAt: timestamp('captured_at').notNull().defaultNow(),
+});
+
+export type ReleaseTag = typeof releaseTags.$inferSelect;
+export type ReleaseObject = typeof releaseObjects.$inferSelect;

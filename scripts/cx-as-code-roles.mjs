@@ -8,11 +8,13 @@
 // solo quelli delle licenze attive. Così il ruolo si crea sempre senza permessi "non validi" e, rilanciando lo
 // script dopo un cambio di licenze, si aggiorna.
 //
-// Uso (Node 18+, nessuna dipendenza):
+// Uso (Node 18+, nessuna dipendenza), con un OAuth client Client Credentials dell'org:
 //   node scripts/cx-as-code-roles.mjs --region mypurecloud.de --client-id <id> --client-secret <secret> [--dry-run] [--out ruoli.json]
+// oppure con l'access token di una persona entrata nell'org (anche tramite Authorized Organizations / org trust),
+// per esempio copiato dal Developer Center (API Explorer, header "Authorization: Bearer <token>"):
+//   node scripts/cx-as-code-roles.mjs --region mypurecloud.de --token <token> [--dry-run] [--out ruoli.json]
 //
-// L'OAuth client usato per lanciare lo script (Client Credentials) deve poter leggere i permessi e creare/modificare
-// Roles: authorization:role:view/add/edit. Dopo la creazione i Roles vanno assegnati con le divisioni
+// Il client o la persona devono poter leggere i permessi e creare/modificare Roles: authorization:role:view/add/edit. Dopo la creazione i Roles vanno assegnati con le divisioni
 // (consigliato: tutte le divisioni), all'OAuth client dell'app e agli utenti.
 
 const argv = process.argv.slice(2);
@@ -23,10 +25,13 @@ const flag = (name) => {
 const region = flag('region');
 const clientId = flag('client-id');
 const clientSecret = flag('client-secret');
+const accessToken = flag('token');
 const dryRun = argv.includes('--dry-run');
 const out = flag('out');
-if (!region || !clientId || !clientSecret) {
-  console.error('Uso: node scripts/cx-as-code-roles.mjs --region <es. mypurecloud.de> --client-id <id> --client-secret <secret> [--dry-run] [--out file.json]');
+if (!region || (!accessToken && (!clientId || !clientSecret))) {
+  console.error(
+    'Uso: node scripts/cx-as-code-roles.mjs --region <es. mypurecloud.de> (--client-id <id> --client-secret <secret> | --token <access token>) [--dry-run] [--out file.json]',
+  );
   process.exit(1);
 }
 
@@ -62,6 +67,7 @@ const READ_ACTION = /^(view|read|search|list)/i;
 const api = `https://api.${region}`;
 
 async function token() {
+  if (accessToken) return accessToken.replace(/^Bearer\s+/i, '');
   const res = await fetch(`https://login.${region}/oauth/token`, {
     method: 'POST',
     headers: {
@@ -75,6 +81,12 @@ async function token() {
 }
 
 const auth = await token();
+// Org in cui si sta lavorando: con un token preso tramite org trust conviene controllarla prima di scrivere
+{
+  const org = await fetch(`${api}/api/v2/organizations/me`, { headers: { Authorization: `Bearer ${auth}` } })
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Token non valido o scaduto (${r.status})`))));
+  console.log(`Org: ${org.name} (${org.thirdPartyOrgName ?? org.id})`);
+}
 async function call(method, path, body) {
   const res = await fetch(api + path, {
     method,

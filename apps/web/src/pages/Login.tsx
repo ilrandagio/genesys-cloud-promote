@@ -45,7 +45,7 @@ export default function LoginPage() {
                 style={{ width: '100%', marginTop: 4 }}
                 value={known}
                 onChange={setEnvId}
-                options={orgs.data!.map((o) => ({ value: o.envId, label: o.name }))}
+                options={orgs.data!.map((o) => ({ value: o.envId, label: `${o.name} (${o.region})` }))}
               />
             </div>
           )}

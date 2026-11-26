@@ -29,6 +29,9 @@ interface LoginOrg {
   clientSecret: string;
 }
 
+/** Nome dell'org di login predefinita: noto dal primo login dopo l'avvio (prima si mostra la regione) */
+let defaultOrgName: string | undefined;
+
 async function loginOrg(envId?: string): Promise<LoginOrg | undefined> {
   if (!envId) {
     return { region: config.GENESYS_LOGIN_REGION, clientId: config.GENESYS_LOGIN_CLIENT_ID, clientSecret: config.GENESYS_LOGIN_CLIENT_SECRET };
@@ -104,7 +107,10 @@ export async function authRoutes(app: FastifyInstance) {
       .from(schema.environments)
       .where(isNotNull(schema.environments.loginClientId))
       .orderBy(asc(schema.environments.name));
-    return [{ envId: '', name: `Org di login predefinita (${config.GENESYS_LOGIN_REGION})`, region: config.GENESYS_LOGIN_REGION }, ...envs.map((e) => ({ envId: e.id, name: e.name, region: e.region }))];
+    const main = { envId: '', name: defaultOrgName ?? `Org di login predefinita (${config.GENESYS_LOGIN_REGION})`, region: config.GENESYS_LOGIN_REGION };
+    // Un ambiente sulla stessa org di quella predefinita non si ripete
+    const others = envs.filter((e) => !(defaultOrgName && e.name.toLowerCase() === defaultOrgName.toLowerCase() && e.region === main.region));
+    return [main, ...others.map((e) => ({ envId: e.id, name: e.name, region: e.region }))];
   });
 
   /** Avvia il login: redirect alla pagina di login di Genesys Cloud (?env=<id> per l'org di un ambiente) */
@@ -196,6 +202,7 @@ export async function authRoutes(app: FastifyInstance) {
       .then(async (r) => (r.ok ? ((await r.json()) as { thirdPartyOrgName?: string; name?: string }) : undefined))
       .then((o) => o?.thirdPartyOrgName ?? o?.name)
       .catch(() => undefined);
+    if (orgName && !org.envId) defaultOrgName = orgName;
 
     if (allowedEmails && !allowedEmails.has(email)) {
       return fail(reply, `L'utente ${email} non è abilitato a questa applicazione`);

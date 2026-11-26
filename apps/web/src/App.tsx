@@ -80,7 +80,7 @@ export default function App() {
               selectedKeys: [me.data?.envId ?? ''],
               items: [
                 { key: 'title', type: 'group', label: "Cambia org (nuovo login nell'org scelta)" },
-                ...(orgs.data ?? []).map((o) => ({ key: o.envId, label: `${o.name}` })),
+                ...(orgs.data ?? []).map((o) => ({ key: o.envId, label: `${o.name} (${o.region})` })),
               ],
               onClick: (e) => {
                 if (e.key === (me.data?.envId ?? '')) return;

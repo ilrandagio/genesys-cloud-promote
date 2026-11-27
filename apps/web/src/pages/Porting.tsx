@@ -240,8 +240,8 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
         },
       });
       const acts = new Map<string, PortAction>();
-      // Prima gli oggetti scelti (primo livello): vengono sempre portati, anche se compaiono come dipendenza di un
-      // altro oggetto scelto; poi le dipendenze
+      // Prima gli oggetti scelti (primo livello): partono da "Porta" anche se compaiono come dipendenza di un altro
+      // oggetto scelto (l'azione resta modificabile); poi le dipendenze
       for (const t of res.trees) if (t.supported) acts.set(keyOf(t), defaultAction(t, true));
       const walk = (n: DependencyNode) => {
         if (n.supported && !acts.has(keyOf(n))) acts.set(keyOf(n), defaultAction(n, false));
@@ -314,9 +314,8 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
     if (changed) setTargetSettings(next);
   }, [targetValues.data, settingsNodes, targetSettings, setTargetSettings]);
 
-  /** Oggetti scelti (primo livello dell'albero): sempre portati, l'azione non si cambia */
-  const rootKeys = useMemo(() => new Set((trees ?? []).filter((t) => t.supported && !isStaticAction(t)).map(keyOf)), [trees]);
-  const actionFor = (n: DependencyNode) => (rootKeys.has(keyOf(n)) ? 'port' : effectiveAction(n, actions.get(keyOf(n))));
+  /** Azione di un oggetto: quella scelta (gli oggetti di primo livello partono da "Porta", modificabile) */
+  const actionFor = (n: DependencyNode) => effectiveAction(n, actions.get(keyOf(n)));
 
   /** Elenco unico degli oggetti con l'azione scelta (un oggetto può comparire più volte nell'albero) */
   const items = useMemo<PortItem[]>(() => {
@@ -341,7 +340,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
     };
     trees?.forEach(walk);
     return [...out.values()];
-  }, [trees, actions, targetSettings, datatableRows, dropPermissions, allowReplace, rootKeys]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [trees, actions, targetSettings, datatableRows, dropPermissions, allowReplace]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Righe dell'albero, calcolate solo quando cambiano analisi, filtri o azioni (non a ogni render): con molti
@@ -358,7 +357,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
         (actionFilter === 'all' ||
           (r.supported && !r.repeated && !!r.target && actionFor(r as DependencyNode) === actionFilter)),
     );
-  }, [treeRows, actionFilter, typeFilter, actions, rootKeys]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [treeRows, actionFilter, typeFilter, actions]); // eslint-disable-line react-hooks/exhaustive-deps
   /** Chiavi delle righe con figli: per espandere/comprimere tutto */
   const parentKeys = useMemo(() => {
     const out: string[] = [];
@@ -1010,13 +1009,10 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
                   render: (_, n) => {
                     if (!n.supported || n.repeated || !n.target) return null;
                     const exists = n.target?.status !== 'missing';
-                    const chosen = rootKeys.has(keyOf(n));
                     const action = (
                       <Select<PortAction>
                         size="small"
                         style={{ width: 240 }}
-                        disabled={chosen}
-                        title={chosen ? "Oggetto scelto: viene sempre portato (per non portarlo toglilo dalla selezione)" : undefined}
                         value={actionFor(n as DependencyNode)}
                         onChange={(v) => setActions(new Map(actions).set(keyOf(n), v))}
                         options={[

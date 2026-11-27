@@ -124,6 +124,7 @@ import {
   applySafetyRules,
   applyTargetSettings,
   restoreActionUrlTemplates,
+  restoreQueueDefaultScripts,
   buildWrapupMappings,
   rewriteAssetLinks,
 } from './transforms.js';
@@ -306,6 +307,8 @@ async function runPlan(job: JobRow, workDir: string, log: JobLog, setJob: SetJob
 
   // Data Actions: URL della richiesta tolto dall'export (provider 1.88.0), riletto dal sorgente
   await restoreActionUrlTemplates(cfg, addresses, new GenesysClient(sourceEnv), log.info);
+  // Queues: Scripts predefiniti per media, non inclusi dall'export (prima della rimappatura degli ID)
+  await restoreQueueDefaultScripts(cfg, addresses, new GenesysClient(sourceEnv), log.info);
 
   // Regole di sicurezza: campagne e sequenze spente, liste senza contatti, indirizzo degli asset rimosso
   applySafetyRules(cfg, log.info);

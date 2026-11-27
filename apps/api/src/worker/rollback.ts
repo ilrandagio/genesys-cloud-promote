@@ -11,7 +11,7 @@ import { dropFlowContentHash, normalizeFilePaths, selectResources, unexportedFil
 import { exportObjects } from './exporter.js';
 import type { PlanJson } from './planJson.js';
 import { tfOrThrow, type TfCreds } from './terraform.js';
-import { applyQueueMembership, applySafetyRules, restoreActionUrlTemplates } from './transforms.js';
+import { applyQueueMembership, applySafetyRules, restoreActionUrlTemplates, restoreQueueDefaultScripts } from './transforms.js';
 
 /** Risorsa dello state di Terraform (formato v4), quanto serve qui */
 interface StateResource {
@@ -208,6 +208,7 @@ export async function takeRollbackSnapshot(opts: {
     // Stesse regole del porting: URL delle Data Actions rilette (ora, prima della scrittura), membri e
     // indirizzi delle Queues di oggi, campagne spente
     await restoreActionUrlTemplates(cfg, addresses, client, info);
+    await restoreQueueDefaultScripts(cfg, addresses, client, info);
     await applyQueueMembership(cfg, addresses, client, info);
     applySafetyRules(cfg, info);
     const unexported = unexportedFiles(cfg);

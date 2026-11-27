@@ -706,6 +706,49 @@ export async function restoreActionUrlTemplates(
   if (restored) log(`Data Actions: request_url_template riletto dal sorgente per ${restored} azioni (non incluso dall'export)`);
 }
 
+/** Media per cui una Queue può avere uno Script predefinito (chiavi di default_script_ids) */
+const SCRIPT_MEDIA = new Set(['CALL', 'CALLBACK', 'CHAT', 'EMAIL', 'MESSAGE']);
+
+/**
+ * Queues: gli Scripts predefiniti per media (default_script_ids) non sono inclusi dall'export del provider.
+ * Si rileggono dal sorgente (defaultScripts) con l'ID dello Script del sorgente: la rimappatura successiva lo
+ * sostituisce con l'ID del target (Script riusato) o con il riferimento allo Script portato nello stesso rilascio;
+ * uno Script non presente nell'analisi ferma la simulazione come ogni altro ID non risolto.
+ * Gli script predefiniti di Genesys (Default Inbound Script…) non sono oggetti Script e non si toccano.
+ */
+export async function restoreQueueDefaultScripts(
+  cfg: TfJson,
+  addresses: Map<PortItem, string>,
+  source: Reader,
+  log: Log,
+) {
+  const tfType = CATALOG.queue.tfType;
+  const restored: string[] = [];
+  for (const [it, addr] of addresses) {
+    if (it.type !== 'queue') continue;
+    const attrs = cfg.resource?.[tfType]?.[addr.slice(tfType.length + 1)];
+    if (!attrs) continue;
+    const current = attrs.default_script_ids;
+    if (current && typeof current === 'object' && Object.keys(current).length) continue;
+    const queue = await source.get<any>(CATALOG.queue.getPath.replace('{id}', encodeURIComponent(it.id)));
+    const scripts: Record<string, string> = {};
+    for (const [media, ref] of Object.entries((queue?.defaultScripts ?? {}) as Record<string, { id?: string }>)) {
+      const key = media.toUpperCase();
+      if (!ref?.id || !SCRIPT_MEDIA.has(key)) continue;
+      // Script predefinito di Genesys: non è un oggetto Script (404), non si porta
+      const exists = await source.get(`/api/v2/scripts/${encodeURIComponent(ref.id)}`).then(
+        () => true,
+        () => false,
+      );
+      if (exists) scripts[key] = ref.id;
+    }
+    if (!Object.keys(scripts).length) continue;
+    attrs.default_script_ids = scripts;
+    restored.push(`${it.name} (${Object.keys(scripts).join(', ')})`);
+  }
+  if (restored.length) log(`Queues: Scripts predefiniti riletti dal sorgente (non inclusi dall'export): ${restored.join('; ')}`);
+}
+
 /**
  * Data Actions: URL e header costanti scelti per il target (spesso cambiano tra ambienti: host, chiavi fisse).
  * Si applica dopo il ripristino dell'URL e dopo la rimappatura degli ID: i valori scelti restano come sono.

@@ -154,6 +154,7 @@ apps/api   Fastify + TypeScript + Drizzle ORM (PostgreSQL)
     (`Flow.`, `Task.`, `State.`…) sono ignorate. Nell'albero questi nodi hanno il tag "per nome".
     Flow omonimi di tipo diverso (es. Workflow e Secure Flow) restano distinti: l'omonimo trovato solo per nome è
     scartato se lo stesso nome è già stato trovato per ID, e nell'export si sceglie l'etichetta con il tipo (`WORKFLOW_<nome>`).
+    Nomi con caratteri accentati (es. "Priorità") trovati nell'export comunque l'exporter trascriva il carattere.
     Negli **script** il nome vale solo se univoco e per data action, data table, flow, emergency group e schedule group;
   - nel porting i riferimenti per nome dei flow non vengono modificati: sul target si risolvono per nome,
     basta che gli oggetti esistano con lo stesso nome;

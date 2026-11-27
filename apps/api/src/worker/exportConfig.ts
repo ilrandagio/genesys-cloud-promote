@@ -77,12 +77,20 @@ export function normalizeFilePaths(cfg: TfJson): number {
 const simplify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
+ * Forme semplificate di un nome per confrontarlo con un'etichetta Terraform (solo ASCII). L'exporter può
+ * trascrivere i caratteri accentati ("Priorità" -> "Priorita") oppure sostituirli ("Priorit_"): valgono entrambe.
+ */
+const nameKeys = (s: string) =>
+  new Set([simplify(s), simplify(s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))]);
+
+/**
  * Filtro per include_filter_resources: "tipo::regex".
  * La regex è volutamente larga (i caratteri speciali diventano "."):
  * l'output viene poi ripulito da selectResources.
  */
 export function includeFilter(item: PortItem): string {
-  const loose = item.name.replace(/[^A-Za-z0-9]/g, '.');
+  // Caratteri non ASCII (es. "à"): l'exporter li trascrive, li sostituisce o li toglie dall'etichetta
+  const loose = item.name.replace(/[^\x00-\x7F]/g, '\u0000').replace(/[^A-Za-z0-9\u0000]/g, '.').replace(/\u0000/g, '.{0,2}');
   // Niente ancora iniziale dove la label ha un prefisso prima del nome:
   // - Flows: il tipo (es. INBOUNDCALL_Main_IVR);
   // - Data Actions: la categoria (es. Isybank_FDI_WS_authenticate; per le azioni statiche anche l'integrazione);
@@ -101,8 +109,7 @@ export function findAddress(cfg: TfJson, item: PortItem, match?: Record<string, 
   const byName: string[] = [];
   for (const [label, attrs] of Object.entries(resources)) {
     const nameAttr = typeof attrs?.name === 'string' ? attrs.name : undefined;
-    const labelMatch =
-      simplify(label) === simplify(item.name);
+    const labelMatch = nameKeys(item.name).has(simplify(label));
     if (!(nameAttr ? nameAttr.toLowerCase() === item.name.toLowerCase() : labelMatch)) continue;
     // Attributi che distinguono gli omonimi (es. integration_id per Data Actions con lo stesso nome)
     const same = Object.entries(match ?? {}).every(([k, v]) => String(attrs?.[k] ?? '').toLowerCase() === v.toLowerCase());
@@ -119,19 +126,21 @@ export function findAddress(cfg: TfJson, item: PortItem, match?: Record<string, 
  * contiene, mai quella di un omonimo di un altro tipo. Senza tipo, solo se il nome è univoco.
  */
 function findFlowAddress(tfType: string, resources: Record<string, any>, item: PortItem): string | undefined {
-  const name = simplify(item.name);
+  const names = [...nameKeys(item.name)];
   const sub = item.subtype ? simplify(item.subtype) : '';
   const labels = Object.keys(resources);
+  const is = (l: string, f: (name: string) => string) => names.some((n) => simplify(l) === f(n));
+  const endsWithName = (l: string) => names.some((n) => simplify(l).endsWith(n));
   if (sub) {
-    const typed = labels.filter((l) => simplify(l) === sub + name || simplify(l) === name + sub);
+    const typed = labels.filter((l) => is(l, (n) => sub + n) || is(l, (n) => n + sub));
     if (typed.length === 1) return `${tfType}.${typed[0]}`;
     if (typed.length > 1) return undefined;
     // Etichetta senza tipo: accettata solo se non esiste un omonimo con un altro tipo nell'etichetta
-    const plain = labels.filter((l) => simplify(l) === name);
-    const otherTyped = labels.some((l) => simplify(l) !== name && simplify(l).endsWith(name) && simplify(l) !== sub + name);
+    const plain = labels.filter((l) => is(l, (n) => n));
+    const otherTyped = labels.some((l) => !is(l, (n) => n) && endsWithName(l) && !is(l, (n) => sub + n));
     return plain.length === 1 && !otherTyped ? `${tfType}.${plain[0]}` : undefined;
   }
-  const any = labels.filter((l) => simplify(l) === name || simplify(l).endsWith(name));
+  const any = labels.filter((l) => is(l, (n) => n) || endsWithName(l));
   return any.length === 1 ? `${tfType}.${any[0]}` : undefined;
 }
 

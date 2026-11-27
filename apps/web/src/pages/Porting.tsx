@@ -336,6 +336,47 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
     return [...out.values()];
   }, [trees, actions, targetSettings, datatableRows, dropPermissions, allowReplace]);
 
+  /**
+   * Righe dell'albero, calcolate solo quando cambiano analisi, filtri o azioni (non a ogni render): con molti
+   * flow e dipendenze rifarle ogni volta rallentava il browser.
+   */
+  const treeRows = useMemo(() => (trees ?? []).map((t) => toRows(t, '', true)), [trees]);
+  const tableRows = useMemo(() => {
+    if (actionFilter === 'all' && !typeFilter.length) return treeRows;
+    // Con un filtro l'albero diventa un elenco: ogni oggetto una volta sola
+    return flatRows(
+      treeRows,
+      (r) =>
+        (!typeFilter.length || typeFilter.includes(rowType(r))) &&
+        (actionFilter === 'all' ||
+          (r.supported && !r.repeated && !!r.target && effectiveAction(r as DependencyNode, actions.get(keyOf(r))) === actionFilter)),
+    );
+  }, [treeRows, actionFilter, typeFilter, actions]);
+  /** Chiavi delle righe con figli: per espandere/comprimere tutto */
+  const parentKeys = useMemo(() => {
+    const out: string[] = [];
+    const walk = (r: TreeRow) => {
+      if (r.children?.length) {
+        out.push(r.rowKey);
+        r.children.forEach(walk);
+      }
+    };
+    tableRows.forEach(walk);
+    return out;
+  }, [tableRows]);
+  /** Albero grande: si apre solo il primo livello, il resto su richiesta (tutte le righe aperte rallentano il browser) */
+  const BIG_TREE = 300;
+  const [expandedKeys, setExpandedKeys] = useState<readonly React.Key[]>([]);
+  useEffect(() => {
+    let total = 0;
+    const count = (r: TreeRow) => {
+      total++;
+      r.children?.forEach(count);
+    };
+    tableRows.forEach(count);
+    setExpandedKeys(total <= BIG_TREE ? parentKeys : tableRows.filter((r) => r.children?.length).map((r) => r.rowKey));
+  }, [tableRows]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Tipi presenti nell'albero, con il numero di oggetti distinti, per il filtro per tipo */
   const treeTypes = useMemo(() => {
     const seen = new Map<string, Set<string>>();
@@ -815,20 +856,7 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
               size="small"
               rowKey="rowKey"
               pagination={false}
-              // key: con un filtro diverso l'albero si riapre tutto espanso
-              key={`${actionFilter}|${typeFilter.join(',')}`}
-              dataSource={(() => {
-                const rows = trees.map((t) => toRows(t, '', true));
-                if (actionFilter === 'all' && !typeFilter.length) return rows;
-                // Con un filtro l'albero diventa un elenco: ogni oggetto una volta sola
-                return flatRows(
-                  rows,
-                  (r) =>
-                    (!typeFilter.length || typeFilter.includes(rowType(r))) &&
-                    (actionFilter === 'all' ||
-                      (r.supported && !r.repeated && !!r.target && effectiveAction(r as DependencyNode, actions.get(keyOf(r))) === actionFilter)),
-                );
-              })()}
+              dataSource={tableRows}
               locale={{
                 emptyText: (
                   <Empty
@@ -840,7 +868,21 @@ export default function PortingPage({ mode = 'porting' }: { mode?: 'porting' | '
                   />
                 ),
               }}
-              expandable={{ defaultExpandAllRows: true }}
+              expandable={{ expandedRowKeys: expandedKeys, onExpandedRowsChange: setExpandedKeys }}
+              title={
+                parentKeys.length
+                  ? () => (
+                      <Space>
+                        <Button size="small" onClick={() => setExpandedKeys(parentKeys)}>
+                          Espandi tutto
+                        </Button>
+                        <Button size="small" onClick={() => setExpandedKeys([])}>
+                          Comprimi tutto
+                        </Button>
+                      </Space>
+                    )
+                  : undefined
+              }
               columns={[
                 {
                   title: 'Oggetto',

@@ -56,6 +56,7 @@ con analisi delle dipendenze e confronto con il target prima di scrivere.
 9. **Ordinamento e filtro delle tabelle** per nome e per tipo (ordinando per entrambi il tipo raggruppa e il nome
    ordina dentro il gruppo), dall'intestazione della colonna. Nell'albero dell'analisi il filtro per tipo (più tipi
    insieme, anche con il filtro per azione) mostra gli oggetti come elenco, ognuno una volta sola.
+   Con alberi grandi (oltre 300 righe) si apre solo il primo livello; *Espandi tutto* / *Comprimi tutto* sopra l'albero.
 
 ## Tipi supportati
 
